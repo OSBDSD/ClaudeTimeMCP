@@ -1,0 +1,20 @@
+{
+  "name": "claude-time-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for tracking Claude Code CLI session time",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test.js"
+  },
+  "keywords": [
+    "claude",
+    "mcp",
+    "time-tracking"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+  }
+}

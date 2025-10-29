@@ -1,0 +1,13 @@
+{
+  "hooks": {
+    "user-prompt-submit-hook": {
+      "command": "C:\\Users\\eric\\ClaudeTimeMCP\\hooks\\session-start.bat",
+      "description": "Auto-start time tracking session on first prompt",
+      "runOnce": true
+    },
+    "tool-use-hook": {
+      "command": "C:\\Users\\eric\\ClaudeTimeMCP\\hooks\\tool-use.bat",
+      "description": "Log tool usage activity"
+    }
+  }
+}

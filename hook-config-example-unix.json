@@ -1,0 +1,13 @@
+{
+  "hooks": {
+    "user-prompt-submit-hook": {
+      "command": "~/.claude-time-mcp/hooks/session-start.sh",
+      "description": "Auto-start time tracking session on first prompt",
+      "runOnce": true
+    },
+    "tool-use-hook": {
+      "command": "~/.claude-time-mcp/hooks/tool-use.sh",
+      "description": "Log tool usage activity"
+    }
+  }
+}
