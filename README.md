@@ -153,13 +153,14 @@ Claude will use `get_session_stats` to display recent activity.
 
 ## Automatic Tracking with Hooks
 
-To enable automatic tracking (coming in Phase 2), you'll set up hooks that:
+**Hooks are now available!** See [HOOKS-SETUP.md](./HOOKS-SETUP.md) for complete setup instructions.
 
+Hooks automatically:
 1. Log session start when Claude Code begins
 2. Log activities as you work
 3. Log session end when you exit
 
-This will be configured in your project's `.claude/config.json` or globally.
+Configure hooks in your project's `.claude/config.json` or globally in Claude Code settings.
 
 ## MCP Tools Reference
 
@@ -334,21 +335,31 @@ To export your time data:
 - No API keys or authentication required
 - You have full control over your data
 
-## Roadmap
+## Current Status
 
-### Phase 2: Hook Integration
+### ✅ Phase 1: Complete - MCP Server
+- MCP server with query tools
+- JSON-based data storage
+- Active time calculation
+- Project-based tracking
+
+### ✅ Phase 2: Complete - Hook Integration
 - Automatic session start/end tracking
 - Automatic activity logging
-- No manual intervention needed
+- CLI tools for manual control
+- Cross-platform hook scripts
+
+## Future Roadmap
 
 ### Phase 3: Enhanced Reporting
 - Custom slash commands (`/timereport`, `/timelog`)
 - Export to CSV/JSON
 - Weekly/monthly summaries
+- Productivity insights
 
 ### Phase 4: Advanced Features
 - Web dashboard
-- Integration with external time tracking services
+- Integration with external time tracking services (Toggl, Harvest, etc.)
 - Cost tracking per project
 - Team collaboration features
 
