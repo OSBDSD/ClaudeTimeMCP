@@ -180,7 +180,7 @@ function handleRequest(request) {
             },
             {
               name: 'get_activities',
-              description: 'Get detailed activity logs with flattened metadata and tool_detail fields. Returns activities with all nested JSON flattened into dot-notation keys (e.g., tool_detail.tool_input.file_path). Use fields parameter to select specific keys.',
+              description: 'Get detailed activity logs with timestamps and full context. Use this to answer questions about specific work done, tools used, files edited, bash commands run, time spent on particular tasks, or any query requiring activity-level detail. Returns comprehensive activity data including tool inputs/outputs, file paths, and command details.',
               inputSchema: {
                 type: 'object',
                 properties: {
