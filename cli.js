@@ -29,6 +29,10 @@ function getStoredSessionId() {
   try {
     return fs.readFileSync(sessionIdFile, 'utf8').trim();
   } catch (error) {
+    if (error.code !== 'ENOENT') {
+      console.error(`!!! ERROR reading session ID file (${sessionIdFile}): ${error.message}`);
+      console.error(`!!! Stack: ${error.stack}`);
+    }
     return null;
   }
 }
@@ -38,7 +42,10 @@ function clearSessionId() {
   try {
     fs.unlinkSync(sessionIdFile);
   } catch (error) {
-    // Ignore if file doesn't exist
+    if (error.code !== 'ENOENT') {
+      console.error(`!!! ERROR deleting session ID file (${sessionIdFile}): ${error.message}`);
+      console.error(`!!! Stack: ${error.stack}`);
+    }
   }
 }
 
@@ -57,7 +64,8 @@ const commands = {
         db.endSession(existingSessionId, timestamp);
         console.log(`Previous session auto-closed: ${existingSessionId}`);
       } catch (error) {
-        // Session might already be closed, ignore error
+        console.error(`!!! ERROR auto-closing previous session (${existingSessionId}): ${error.message}`);
+        console.error(`!!! Stack: ${error.stack}`);
       }
     }
 
@@ -96,20 +104,80 @@ const commands = {
     const sessionId = getStoredSessionId();
 
     if (!sessionId) {
-      // Silently ignore if no active session
+      console.error('!!! ERROR: No active session found for log-activity');
       process.exit(0);
     }
 
-    const activityType = args[0] || 'tool_use';
-    const timestamp = args[1] || new Date().toISOString();
-    const metadata = args[2] ? JSON.parse(args[2]) : null;
+    // Parse arguments - support both positional and --type flag
+    let activityType = 'tool_use';
+    let timestamp = new Date().toISOString();
+    let metadata = null;
+
+    try {
+      for (let i = 0; i < args.length; i++) {
+        if (args[i] === '--type' && args[i + 1]) {
+          activityType = args[i + 1];
+          i++; // Skip next arg
+        } else if (args[i].startsWith('--type=')) {
+          activityType = args[i].substring('--type='.length);
+        } else if (args[i] === '--metadata-base64' && args[i + 1]) {
+          // Decode base64 metadata
+          try {
+            const decoded = Buffer.from(args[i + 1], 'base64').toString('utf8');
+            metadata = JSON.parse(decoded);
+          } catch (decodeError) {
+            console.error(`!!! ERROR decoding base64 metadata: "${args[i + 1]}"`);
+            console.error(`!!! Decode error: ${decodeError.message}`);
+            console.error(`!!! Stack: ${decodeError.stack}`);
+            metadata = null;
+          }
+          i++; // Skip next arg
+        } else if (args[i].startsWith('--metadata-base64=')) {
+          // Decode base64 metadata (format: --metadata-base64=VALUE)
+          try {
+            const encoded = args[i].substring('--metadata-base64='.length);
+            const decoded = Buffer.from(encoded, 'base64').toString('utf8');
+            metadata = JSON.parse(decoded);
+          } catch (decodeError) {
+            console.error(`!!! ERROR decoding base64 metadata from flag`);
+            console.error(`!!! Decode error: ${decodeError.message}`);
+            console.error(`!!! Stack: ${decodeError.stack}`);
+            metadata = null;
+          }
+        } else if (!args[i].startsWith('--')) {
+          // Positional args for backwards compatibility
+          if (i === 0) activityType = args[i];
+          else if (i === 1) timestamp = args[i];
+          else if (i === 2) {
+            try {
+              metadata = JSON.parse(args[i]);
+            } catch (parseError) {
+              console.error(`!!! ERROR parsing metadata JSON: "${args[i]}"`);
+              console.error(`!!! Parse error: ${parseError.message}`);
+              console.error(`!!! Stack: ${parseError.stack}`);
+              metadata = null;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`!!! ERROR parsing log-activity arguments: ${error.message}`);
+      console.error(`!!! Args: ${JSON.stringify(args)}`);
+      console.error(`!!! Stack: ${error.stack}`);
+    }
 
     try {
       db.logActivity(sessionId, activityType, timestamp, metadata);
       // Silent success - don't spam logs
     } catch (error) {
-      // Silently ignore errors in activity logging
-      process.exit(0);
+      console.error(`!!! ERROR logging activity to database:`);
+      console.error(`!!! Session: ${sessionId}`);
+      console.error(`!!! Activity type: ${activityType}`);
+      console.error(`!!! Timestamp: ${timestamp}`);
+      console.error(`!!! Metadata: ${JSON.stringify(metadata)}`);
+      console.error(`!!! Error: ${error.message}`);
+      console.error(`!!! Stack: ${error.stack}`);
+      process.exit(1);
     }
   },
 

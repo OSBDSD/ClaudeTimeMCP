@@ -41,8 +41,17 @@ function querySQLite(sql) {
     const trimmed = result.trim();
     return trimmed ? JSON.parse(trimmed) : [];
   } catch (error) {
-    // If JSON parsing fails or query returns nothing, return empty array
-    return [];
+    console.error(`!!! ERROR in querySQLite:`);
+    console.error(`!!! SQL: ${sql}`);
+    console.error(`!!! Error: ${error.message}`);
+    console.error(`!!! Stack: ${error.stack}`);
+    if (error.stderr) {
+      console.error(`!!! SQLite stderr: ${error.stderr}`);
+    }
+    if (error.stdout) {
+      console.error(`!!! SQLite stdout: ${error.stdout}`);
+    }
+    throw error;
   }
 }
 
@@ -280,6 +289,79 @@ export function getCurrentSession(projectPath) {
 
   const sessions = querySQLite(sql);
   return sessions.length > 0 ? sessions[0] : null;
+}
+
+export function getActivities(options = {}) {
+  const {
+    startDate = null,
+    endDate = null,
+    sessionId = null,
+    activityType = null,
+    projectPath = null,
+    limit = null
+  } = options;
+
+  let whereClauses = [];
+
+  if (startDate) {
+    whereClauses.push(`DATE(a.timestamp) >= DATE('${startDate}')`);
+  }
+
+  if (endDate) {
+    whereClauses.push(`DATE(a.timestamp) <= DATE('${endDate}')`);
+  }
+
+  if (sessionId) {
+    whereClauses.push(`a.session_id = '${sessionId}'`);
+  }
+
+  if (activityType) {
+    whereClauses.push(`a.activity_type = '${activityType}'`);
+  }
+
+  if (projectPath) {
+    whereClauses.push(`s.project_path = '${projectPath.replace(/'/g, "''")}'`);
+  }
+
+  const whereClause = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : '';
+
+  const limitClause = limit ? `LIMIT ${limit}` : '';
+
+  const sql = `
+    SELECT
+      a.id,
+      a.session_id,
+      a.activity_type,
+      a.timestamp,
+      a.metadata,
+      s.project_path,
+      s.project_name,
+      s.start_time as session_start
+    FROM activities a
+    JOIN sessions s ON a.session_id = s.id
+    ${whereClause}
+    ORDER BY a.timestamp DESC
+    ${limitClause}
+  `;
+
+  const activities = querySQLite(sql);
+
+  // Parse metadata JSON for each activity
+  return activities.map(activity => {
+    let parsedMetadata = null;
+    if (activity.metadata) {
+      try {
+        parsedMetadata = JSON.parse(activity.metadata);
+      } catch (e) {
+        parsedMetadata = { raw: activity.metadata };
+      }
+    }
+
+    return {
+      ...activity,
+      metadata: parsedMetadata
+    };
+  });
 }
 
 export function closeDatabase() {

@@ -177,6 +177,40 @@ function handleRequest(request) {
                 },
                 required: ['project_path']
               }
+            },
+            {
+              name: 'get_activities',
+              description: 'Get detailed activity logs with timestamps and metadata. Use this to answer questions about specific work done, tools used, files edited, bash commands run, time spent on particular tasks, or any query requiring activity-level detail. Returns raw activity data with full metadata for flexible analysis and keyword searching.',
+              inputSchema: {
+                type: 'object',
+                properties: {
+                  start_date: {
+                    type: 'string',
+                    description: 'Start date in ISO format (YYYY-MM-DD), optional'
+                  },
+                  end_date: {
+                    type: 'string',
+                    description: 'End date in ISO format (YYYY-MM-DD), optional'
+                  },
+                  session_id: {
+                    type: 'string',
+                    description: 'Filter by specific session ID, optional'
+                  },
+                  activity_type: {
+                    type: 'string',
+                    description: 'Filter by activity type (tool_use, message, error, other), optional',
+                    enum: ['tool_use', 'message', 'error', 'other']
+                  },
+                  project_path: {
+                    type: 'string',
+                    description: 'Filter by project path, optional'
+                  },
+                  limit: {
+                    type: 'number',
+                    description: 'Maximum number of activities to return (optional, no limit by default)'
+                  }
+                }
+              }
             }
           ]
         });
@@ -190,6 +224,10 @@ function handleRequest(request) {
         sendError(id, -32601, `Method not found: ${method}`);
     }
   } catch (error) {
+    console.error(`!!! ERROR in handleRequest:`);
+    console.error(`!!! Method: ${method}`);
+    console.error(`!!! Error: ${error.message}`);
+    console.error(`!!! Stack: ${error.stack}`);
     sendError(id, -32603, 'Internal error', error.message);
   }
 }
@@ -287,10 +325,35 @@ function handleToolCall(id, params) {
         });
         break;
 
+      case 'get_activities':
+        result = db.getActivities({
+          startDate: args.start_date,
+          endDate: args.end_date,
+          sessionId: args.session_id,
+          activityType: args.activity_type,
+          projectPath: args.project_path,
+          limit: args.limit || null
+        });
+
+        sendResponse(id, {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2)
+            }
+          ]
+        });
+        break;
+
       default:
         sendError(id, -32601, `Tool not found: ${name}`);
     }
   } catch (error) {
+    console.error(`!!! ERROR in handleToolCall:`);
+    console.error(`!!! Tool name: ${name}`);
+    console.error(`!!! Arguments: ${JSON.stringify(args)}`);
+    console.error(`!!! Error: ${error.message}`);
+    console.error(`!!! Stack: ${error.stack}`);
     sendError(id, -32603, 'Tool execution error', error.message);
   }
 }
@@ -332,6 +395,10 @@ rl.on('line', (line) => {
     const request = JSON.parse(line);
     handleRequest(request);
   } catch (error) {
+    console.error(`!!! ERROR parsing JSON-RPC request:`);
+    console.error(`!!! Line: ${line}`);
+    console.error(`!!! Error: ${error.message}`);
+    console.error(`!!! Stack: ${error.stack}`);
     sendError(null, -32700, 'Parse error', error.message);
   }
 });

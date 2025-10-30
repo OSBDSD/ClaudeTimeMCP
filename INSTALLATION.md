@@ -437,9 +437,70 @@ Enjoy automatic time tracking! 🎉
 
 ---
 
+---
+
+## Appendix: How Hooks Work
+
+### Session Lifecycle
+
+Understanding what happens behind the scenes:
+
+**1. Session Start**
+- You start Claude Code in any project
+- `SessionStart` hook fires automatically
+- Calls `cli.js session-start`
+- Session ID stored in `.current-session-id`
+- Session logged to database with start time
+
+**2. During Session**
+- **Every user prompt:**
+  - `UserPromptSubmit` hook fires (starts session on first prompt via `session-start.bat`)
+  - `user-message-hook` fires to log user message content
+  - Calls `cli.js log-activity message` with prompt text
+  - Activity logged to database
+- **Every tool use:** `tool-use-hook` fires (Read, Write, Edit, Bash, etc.)
+  - Calls `cli.js log-activity tool_use` with tool name and parameters
+  - Activity logged to database with full tool details (file paths, commands, etc.)
+
+**3. Session End**
+- You exit Claude Code (close terminal/window)
+- `SessionEnd` hook fires automatically
+- Calls `cli.js session-end`
+- Session closed with end time and duration calculated
+
+### What Gets Tracked
+
+The hooks automatically log:
+- **Session data:** Project path, start/end times, total duration
+- **User messages:** Each prompt you submit to Claude (full text for keyword searching)
+- **Tool usage:** Every file read, edit, command executed, etc.
+- **Tool details:** File paths, bash commands, search patterns, edit changes
+- **Activity metadata:** Timestamps for accurate time calculation
+
+### Manual Session Control
+
+If you need to manually control sessions (useful for testing or fixing states):
+
+```bash
+# Check current session
+node cli.js current-session
+
+# Manually end current session
+node cli.js session-end
+
+# Manually start a new session
+node cli.js session-start
+
+# Log an activity manually
+node cli.js log-activity --type message
+```
+
+**Note:** Manual control is rarely needed - hooks handle everything automatically!
+
+---
+
 ## Need Help?
 
 - Check [README.md](./README.md) for feature overview
-- Check [HOOKS-SETUP.md](./HOOKS-SETUP.md) for detailed hook configuration options
 - Check [ARCHITECTURE.md](./ARCHITECTURE.md) for how it all works
 - Report issues at: https://github.com/OSBDSD/ClaudeTimeMCP/issues

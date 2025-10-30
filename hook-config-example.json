@@ -5,9 +5,13 @@
       "description": "Auto-start time tracking session on first prompt",
       "runOnce": true
     },
+    "user-message-hook": {
+      "command": "C:\\Users\\eric\\ClaudeTimeMCP\\hooks\\user-message.bat",
+      "description": "Log user message content for tracking work topics"
+    },
     "tool-use-hook": {
       "command": "C:\\Users\\eric\\ClaudeTimeMCP\\hooks\\tool-use.bat",
-      "description": "Log tool usage activity"
+      "description": "Log tool usage activity with full parameters"
     }
   }
 }

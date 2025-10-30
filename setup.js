@@ -34,7 +34,13 @@ try {
     execSync('claude mcp remove time-tracker', { stdio: 'pipe' });
     console.log('✓ Removed existing time-tracker configuration');
   } catch (e) {
-    // Doesn't exist, that's fine
+    // Check if it's just a "not found" error or a real error
+    if (e.message && !e.message.includes('not found') && !e.message.includes('does not exist')) {
+      console.error('!!! ERROR removing existing time-tracker configuration:');
+      console.error(`!!! Error: ${e.message}`);
+      console.error(`!!! Stack: ${e.stack}`);
+    }
+    // If it doesn't exist, that's fine - continue
   }
 
   // Add MCP server with user scope (global)
@@ -45,8 +51,16 @@ try {
   execSync(mcpCommand, { stdio: 'inherit' });
   console.log('\n✓ MCP server configured globally (user scope)\n');
 } catch (error) {
-  console.error('ERROR: Failed to configure MCP server');
-  console.error(error.message);
+  console.error('!!! ERROR: Failed to configure MCP server');
+  console.error(`!!! Command: ${mcpCommand}`);
+  console.error(`!!! Error: ${error.message}`);
+  console.error(`!!! Stack: ${error.stack}`);
+  if (error.stderr) {
+    console.error(`!!! Stderr: ${error.stderr}`);
+  }
+  if (error.stdout) {
+    console.error(`!!! Stdout: ${error.stdout}`);
+  }
   process.exit(1);
 }
 
@@ -76,7 +90,10 @@ if (fs.existsSync(HOOKS_CONFIG_PATH)) {
     fs.writeFileSync(backupPath, JSON.stringify(settings, null, 2), 'utf8');
     console.log(`✓ Backed up to: ${backupPath}`);
   } catch (error) {
-    console.warn('Warning: Could not parse existing settings, creating new');
+    console.error('!!! WARNING: Could not parse existing settings, creating new');
+    console.error(`!!! File: ${HOOKS_CONFIG_PATH}`);
+    console.error(`!!! Error: ${error.message}`);
+    console.error(`!!! Stack: ${error.stack}`);
   }
 }
 
@@ -85,27 +102,60 @@ if (!settings.hooks) {
   settings.hooks = {};
 }
 
-// UserPromptSubmit hook - logs session start (runs once per session)
-settings.hooks.UserPromptSubmit = [
+// SessionStart hook - starts tracking when Claude Code session begins
+settings.hooks.SessionStart = [
   {
     hooks: [
       {
         type: 'command',
-        command: `node "${CLI_JS}" session-start`,
-        runOnce: true
+        command: `node "${CLI_JS}" session-start`
       }
     ]
   }
 ];
 
-// ToolUse hook - logs activity on every tool use
-settings.hooks.ToolUse = [
+// SessionEnd hook - ends tracking when Claude Code session exits
+settings.hooks.SessionEnd = [
+  {
+    hooks: [
+      {
+        type: 'command',
+        command: `node "${CLI_JS}" session-end`
+      }
+    ]
+  }
+];
+
+// UserPromptSubmit hook - logs each user message as activity
+// Reads JSON from stdin and extracts the prompt field
+const userMessageCommand = platform() === 'win32'
+  ? `powershell -Command "$stdinData = [Console]::In.ReadToEnd(); $data = $stdinData | ConvertFrom-Json; $timestamp = [DateTime]::UtcNow.ToString('o'); $metadata = @{prompt=$data.prompt} | ConvertTo-Json -Compress; $encoded = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($metadata)); & node '${CLI_JS}' log-activity message $timestamp --metadata-base64 $encoded"`
+  : `bash -c 'INPUT=$(cat); PROMPT=$(echo "$INPUT" | jq -r ".prompt // \\"[user message]\\""); TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ" 2>/dev/null || date -u +"%Y-%m-%dT%H:%M:%SZ"); JSON="{\\"prompt\\":\\"$PROMPT\\"}"; ENCODED=$(echo -n "$JSON" | base64 -w 0 2>/dev/null || echo -n "$JSON" | base64); node "${CLI_JS}" log-activity message "$TIMESTAMP" --metadata-base64 "$ENCODED"'`;
+
+settings.hooks.UserPromptSubmit = [
+  {
+    hooks: [
+      {
+        type: 'command',
+        command: userMessageCommand
+      }
+    ]
+  }
+];
+
+// PostToolUse hook - logs activity after every tool use
+// Reads JSON from stdin and extracts the tool_name field
+const toolUseCommand = platform() === 'win32'
+  ? `powershell -Command "$stdinData = [Console]::In.ReadToEnd(); $data = $stdinData | ConvertFrom-Json; $timestamp = [DateTime]::UtcNow.ToString('o'); $metadata = @{tool=$data.tool_name; description=''} | ConvertTo-Json -Compress; $encoded = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($metadata)); & node '${CLI_JS}' log-activity tool_use $timestamp --metadata-base64 $encoded"`
+  : `bash -c 'INPUT=$(cat); TOOL=$(echo "$INPUT" | jq -r ".tool_name // \\"[tool_use]\\""); TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ" 2>/dev/null || date -u +"%Y-%m-%dT%H:%M:%SZ"); JSON="{\\"tool\\":\\"$TOOL\\",\\"description\\":\\"\\"}"; ENCODED=$(echo -n "$JSON" | base64 -w 0 2>/dev/null || echo -n "$JSON" | base64); node "${CLI_JS}" log-activity tool_use "$TIMESTAMP" --metadata-base64 "$ENCODED"'`;
+
+settings.hooks.PostToolUse = [
   {
     matcher: '*',
     hooks: [
       {
         type: 'command',
-        command: `node "${CLI_JS}" log-activity`
+        command: toolUseCommand
       }
     ]
   }

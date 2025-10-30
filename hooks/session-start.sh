@@ -8,8 +8,8 @@ PROJECT_DIR="${PWD}"
 # Get the path to the CLI script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Call the CLI to start session (suppress output)
-node "${SCRIPT_DIR}/cli.js" session-start "${PROJECT_DIR}" > /dev/null 2>&1
+# Call the CLI to start session
+node "${SCRIPT_DIR}/cli.js" session-start "${PROJECT_DIR}"
 
 # Exit successfully
 exit 0

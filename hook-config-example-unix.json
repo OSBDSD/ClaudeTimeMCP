@@ -5,9 +5,13 @@
       "description": "Auto-start time tracking session on first prompt",
       "runOnce": true
     },
+    "user-message-hook": {
+      "command": "~/.claude-time-mcp/hooks/user-message.sh",
+      "description": "Log user message content for tracking work topics"
+    },
     "tool-use-hook": {
       "command": "~/.claude-time-mcp/hooks/tool-use.sh",
-      "description": "Log tool usage activity"
+      "description": "Log tool usage activity with full parameters"
     }
   }
 }

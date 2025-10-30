@@ -145,11 +145,11 @@ Claude will use `get_session_stats` to display recent activity.
 
 ## Automatic Tracking with Hooks
 
-**Hooks are configured globally by the setup script!** See [HOOKS-SETUP.md](./HOOKS-SETUP.md) for advanced configuration.
+**Hooks are configured globally by the setup script!** See [INSTALLATION.md](./INSTALLATION.md) Appendix for details on how hooks work.
 
 Hooks automatically:
 1. Log session start when Claude Code begins
-2. Log activities as you work
+2. Log user messages and tool usage as you work
 3. Log session end when you exit
 
 Hooks are configured in `~/.claude/settings.json` and work across all your projects automatically.
