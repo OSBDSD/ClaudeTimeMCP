@@ -85,6 +85,7 @@ function initializeDatabase() {
       activity_type TEXT NOT NULL,
       timestamp TEXT NOT NULL,
       metadata TEXT,
+      tool_detail TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (session_id) REFERENCES sessions(id)
     );
@@ -99,6 +100,13 @@ function initializeDatabase() {
     if (stmt.trim()) {
       executeSQLite(stmt.trim());
     }
+  }
+
+  // Migration: Add tool_detail column if it doesn't exist (for existing databases)
+  try {
+    executeSQLite(`ALTER TABLE activities ADD COLUMN tool_detail TEXT;`);
+  } catch (error) {
+    // Column already exists or other error - safe to ignore
   }
 }
 
@@ -147,11 +155,12 @@ export function endSession(sessionId, timestamp) {
   };
 }
 
-export function logActivity(sessionId, activityType, timestamp, metadata = null) {
+export function logActivity(sessionId, activityType, timestamp, metadata = null, toolDetail = null) {
   const id = randomUUID();
   const metadataJson = metadata ? JSON.stringify(metadata).replace(/'/g, "''") : null;
+  const toolDetailJson = toolDetail ? JSON.stringify(toolDetail).replace(/'/g, "''") : null;
 
-  const sql = `INSERT INTO activities (id, session_id, activity_type, timestamp, metadata) VALUES ('${id}', '${sessionId}', '${activityType}', '${timestamp}', ${metadataJson ? "'" + metadataJson + "'" : 'NULL'})`;
+  const sql = `INSERT INTO activities (id, session_id, activity_type, timestamp, metadata, tool_detail) VALUES ('${id}', '${sessionId}', '${activityType}', '${timestamp}', ${metadataJson ? "'" + metadataJson + "'" : 'NULL'}, ${toolDetailJson ? "'" + toolDetailJson + "'" : 'NULL'})`;
   executeSQLite(sql);
 
   // Update session counters
@@ -291,6 +300,26 @@ export function getCurrentSession(projectPath) {
   return sessions.length > 0 ? sessions[0] : null;
 }
 
+// Helper function to flatten nested JSON objects
+function flattenObject(obj, prefix = '', result = {}) {
+  if (!obj || typeof obj !== 'object') {
+    return result;
+  }
+
+  for (const key in obj) {
+    const value = obj[key];
+    const newKey = prefix ? `${prefix}.${key}` : key;
+
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      flattenObject(value, newKey, result);
+    } else {
+      result[newKey] = value;
+    }
+  }
+
+  return result;
+}
+
 export function getActivities(options = {}) {
   const {
     startDate = null,
@@ -298,7 +327,8 @@ export function getActivities(options = {}) {
     sessionId = null,
     activityType = null,
     projectPath = null,
-    limit = null
+    limit = null,
+    fields = null
   } = options;
 
   let whereClauses = [];
@@ -334,6 +364,7 @@ export function getActivities(options = {}) {
       a.activity_type,
       a.timestamp,
       a.metadata,
+      a.tool_detail,
       s.project_path,
       s.project_name,
       s.start_time as session_start
@@ -346,8 +377,9 @@ export function getActivities(options = {}) {
 
   const activities = querySQLite(sql);
 
-  // Parse metadata JSON for each activity
+  // Parse, flatten, and optionally filter activities
   return activities.map(activity => {
+    // Parse metadata
     let parsedMetadata = null;
     if (activity.metadata) {
       try {
@@ -357,10 +389,51 @@ export function getActivities(options = {}) {
       }
     }
 
-    return {
-      ...activity,
-      metadata: parsedMetadata
+    // Parse tool_detail
+    let parsedToolDetail = null;
+    if (activity.tool_detail) {
+      try {
+        parsedToolDetail = JSON.parse(activity.tool_detail);
+      } catch (e) {
+        parsedToolDetail = { raw: activity.tool_detail };
+      }
+    }
+
+    // Start with base activity fields (exclude raw JSON columns)
+    const result = {
+      id: activity.id,
+      session_id: activity.session_id,
+      activity_type: activity.activity_type,
+      timestamp: activity.timestamp,
+      project_path: activity.project_path,
+      project_name: activity.project_name,
+      session_start: activity.session_start
     };
+
+    // Flatten metadata fields with prefix
+    if (parsedMetadata) {
+      const flatMetadata = flattenObject(parsedMetadata, 'metadata');
+      Object.assign(result, flatMetadata);
+    }
+
+    // Flatten tool_detail fields with prefix
+    if (parsedToolDetail) {
+      const flatToolDetail = flattenObject(parsedToolDetail, 'tool_detail');
+      Object.assign(result, flatToolDetail);
+    }
+
+    // Filter by fields if specified
+    if (fields && Array.isArray(fields) && fields.length > 0) {
+      const filtered = {};
+      for (const field of fields) {
+        if (field in result) {
+          filtered[field] = result[field];
+        }
+      }
+      return filtered;
+    }
+
+    return result;
   });
 }
 

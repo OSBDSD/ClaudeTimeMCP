@@ -180,7 +180,7 @@ function handleRequest(request) {
             },
             {
               name: 'get_activities',
-              description: 'Get detailed activity logs with timestamps and metadata. Use this to answer questions about specific work done, tools used, files edited, bash commands run, time spent on particular tasks, or any query requiring activity-level detail. Returns raw activity data with full metadata for flexible analysis and keyword searching.',
+              description: 'Get detailed activity logs with flattened metadata and tool_detail fields. Returns activities with all nested JSON flattened into dot-notation keys (e.g., tool_detail.tool_input.file_path). Use fields parameter to select specific keys.',
               inputSchema: {
                 type: 'object',
                 properties: {
@@ -208,6 +208,13 @@ function handleRequest(request) {
                   limit: {
                     type: 'number',
                     description: 'Maximum number of activities to return (optional, no limit by default)'
+                  },
+                  fields: {
+                    type: 'array',
+                    items: {
+                      type: 'string'
+                    },
+                    description: 'Array of field names to include in output. Use dot notation for nested fields (e.g., ["timestamp", "tool_detail.tool_name", "tool_detail.tool_input.file_path"]). If omitted, returns all flattened fields.'
                   }
                 }
               }
@@ -332,7 +339,8 @@ function handleToolCall(id, params) {
           sessionId: args.session_id,
           activityType: args.activity_type,
           projectPath: args.project_path,
-          limit: args.limit || null
+          limit: args.limit || null,
+          fields: args.fields || null
         });
 
         sendResponse(id, {

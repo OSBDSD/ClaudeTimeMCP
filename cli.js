@@ -112,6 +112,7 @@ const commands = {
     let activityType = 'tool_use';
     let timestamp = new Date().toISOString();
     let metadata = null;
+    let toolDetail = null;
 
     try {
       for (let i = 0; i < args.length; i++) {
@@ -144,6 +145,30 @@ const commands = {
             console.error(`!!! Stack: ${decodeError.stack}`);
             metadata = null;
           }
+        } else if (args[i] === '--tool-detail-base64' && args[i + 1]) {
+          // Decode base64 tool detail (full hook JSON)
+          try {
+            const decoded = Buffer.from(args[i + 1], 'base64').toString('utf8');
+            toolDetail = JSON.parse(decoded);
+          } catch (decodeError) {
+            console.error(`!!! ERROR decoding base64 tool detail: "${args[i + 1]}"`);
+            console.error(`!!! Decode error: ${decodeError.message}`);
+            console.error(`!!! Stack: ${decodeError.stack}`);
+            toolDetail = null;
+          }
+          i++; // Skip next arg
+        } else if (args[i].startsWith('--tool-detail-base64=')) {
+          // Decode base64 tool detail (format: --tool-detail-base64=VALUE)
+          try {
+            const encoded = args[i].substring('--tool-detail-base64='.length);
+            const decoded = Buffer.from(encoded, 'base64').toString('utf8');
+            toolDetail = JSON.parse(decoded);
+          } catch (decodeError) {
+            console.error(`!!! ERROR decoding base64 tool detail from flag`);
+            console.error(`!!! Decode error: ${decodeError.message}`);
+            console.error(`!!! Stack: ${decodeError.stack}`);
+            toolDetail = null;
+          }
         } else if (!args[i].startsWith('--')) {
           // Positional args for backwards compatibility
           if (i === 0) activityType = args[i];
@@ -167,7 +192,7 @@ const commands = {
     }
 
     try {
-      db.logActivity(sessionId, activityType, timestamp, metadata);
+      db.logActivity(sessionId, activityType, timestamp, metadata, toolDetail);
       // Silent success - don't spam logs
     } catch (error) {
       console.error(`!!! ERROR logging activity to database:`);
@@ -175,6 +200,7 @@ const commands = {
       console.error(`!!! Activity type: ${activityType}`);
       console.error(`!!! Timestamp: ${timestamp}`);
       console.error(`!!! Metadata: ${JSON.stringify(metadata)}`);
+      console.error(`!!! Tool Detail: ${JSON.stringify(toolDetail)}`);
       console.error(`!!! Error: ${error.message}`);
       console.error(`!!! Stack: ${error.stack}`);
       process.exit(1);

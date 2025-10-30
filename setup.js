@@ -144,10 +144,11 @@ settings.hooks.UserPromptSubmit = [
 ];
 
 // PostToolUse hook - logs activity after every tool use
-// Reads JSON from stdin and extracts the tool_name field
+// Reads JSON from stdin and passes the ENTIRE hook JSON as tool_detail
+// Also extracts tool_name for simple metadata
 const toolUseCommand = platform() === 'win32'
-  ? `powershell -Command "$stdinData = [Console]::In.ReadToEnd(); $data = $stdinData | ConvertFrom-Json; $timestamp = [DateTime]::UtcNow.ToString('o'); $metadata = @{tool=$data.tool_name; description=''} | ConvertTo-Json -Compress; $encoded = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($metadata)); & node '${CLI_JS}' log-activity tool_use $timestamp --metadata-base64 $encoded"`
-  : `bash -c 'INPUT=$(cat); TOOL=$(echo "$INPUT" | jq -r ".tool_name // \\"[tool_use]\\""); TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ" 2>/dev/null || date -u +"%Y-%m-%dT%H:%M:%SZ"); JSON="{\\"tool\\":\\"$TOOL\\",\\"description\\":\\"\\"}"; ENCODED=$(echo -n "$JSON" | base64 -w 0 2>/dev/null || echo -n "$JSON" | base64); node "${CLI_JS}" log-activity tool_use "$TIMESTAMP" --metadata-base64 "$ENCODED"'`;
+  ? `powershell -Command "$stdinData = [Console]::In.ReadToEnd(); $data = $stdinData | ConvertFrom-Json; $timestamp = [DateTime]::UtcNow.ToString('o'); $metadata = @{tool=$data.tool_name; description=''} | ConvertTo-Json -Compress; $metadataEncoded = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($metadata)); $toolDetailEncoded = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($stdinData)); & node '${CLI_JS}' log-activity tool_use $timestamp --metadata-base64 $metadataEncoded --tool-detail-base64 $toolDetailEncoded"`
+  : `bash -c 'INPUT=$(cat); TOOL=$(echo "$INPUT" | jq -r ".tool_name // \\"[tool_use]\\""); TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ" 2>/dev/null || date -u +"%Y-%m-%dT%H:%M:%SZ"); META="{\\"tool\\":\\"$TOOL\\",\\"description\\":\\"\\"}"; META_ENC=$(echo -n "$META" | base64 -w 0 2>/dev/null || echo -n "$META" | base64); DETAIL_ENC=$(echo -n "$INPUT" | base64 -w 0 2>/dev/null || echo -n "$INPUT" | base64); node "${CLI_JS}" log-activity tool_use "$TIMESTAMP" --metadata-base64 "$META_ENC" --tool-detail-base64 "$DETAIL_ENC"'`;
 
 settings.hooks.PostToolUse = [
   {
