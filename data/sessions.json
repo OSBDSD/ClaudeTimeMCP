@@ -1,0 +1,46 @@
+[
+  {
+    "id": "9120d4fd-8570-495d-bbc8-7a9e3c05c2c0",
+    "project_path": "C:\\Users\\eric\\shopifytealium",
+    "project_name": "shopifytealium",
+    "start_time": "2025-10-29T10:00:00.000Z",
+    "end_time": "2025-10-29T11:00:00.000Z",
+    "duration_minutes": 60,
+    "message_count": 1,
+    "tool_use_count": 2,
+    "created_at": "2025-10-29T15:30:09.317Z"
+  },
+  {
+    "id": "a26fddbe-4424-496a-816c-0f4de1456322",
+    "project_path": "C:\\Users\\eric\\another-project",
+    "project_name": "another-project",
+    "start_time": "2025-10-29T14:00:00.000Z",
+    "end_time": "2025-10-29T14:30:00.000Z",
+    "duration_minutes": 30,
+    "message_count": 1,
+    "tool_use_count": 0,
+    "created_at": "2025-10-29T15:30:09.323Z"
+  },
+  {
+    "id": "92c97dbb-9364-4496-8eef-becd6ea95d33",
+    "project_path": "C:\\Users\\eric\\shopifytealium",
+    "project_name": "shopifytealium",
+    "start_time": "2025-10-29T15:30:09.325Z",
+    "end_time": "2025-10-29T15:30:09.326Z",
+    "duration_minutes": 0.000016666666666666667,
+    "message_count": 0,
+    "tool_use_count": 0,
+    "created_at": "2025-10-29T15:30:09.325Z"
+  },
+  {
+    "id": "46c24ed8-8847-42fc-bd2d-629f30c9ca8d",
+    "project_path": "C:\\Users\\eric\\ClaudeTimeMCP",
+    "project_name": "ClaudeTimeMCP",
+    "start_time": "2025-10-29T17:37:47.444Z",
+    "end_time": "2025-10-29T17:37:47.787Z",
+    "duration_minutes": 0.005716666666666667,
+    "message_count": 1,
+    "tool_use_count": 2,
+    "created_at": "2025-10-29T17:37:47.445Z"
+  }
+]

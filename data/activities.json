@@ -1,0 +1,64 @@
+[
+  {
+    "id": "2fc806bd-98ee-40e3-b082-639460b0e93c",
+    "session_id": "9120d4fd-8570-495d-bbc8-7a9e3c05c2c0",
+    "activity_type": "tool_use",
+    "timestamp": "2025-10-29T10:05:00.000Z",
+    "metadata": {
+      "tool": "Read",
+      "file": "app.js"
+    },
+    "created_at": "2025-10-29T15:30:09.320Z"
+  },
+  {
+    "id": "cda8b8c3-e823-41a1-9a72-5dc4e399c40c",
+    "session_id": "9120d4fd-8570-495d-bbc8-7a9e3c05c2c0",
+    "activity_type": "message",
+    "timestamp": "2025-10-29T10:10:00.000Z",
+    "metadata": null,
+    "created_at": "2025-10-29T15:30:09.320Z"
+  },
+  {
+    "id": "2b6f8efd-8791-4f9c-acee-09ff371aa5cc",
+    "session_id": "9120d4fd-8570-495d-bbc8-7a9e3c05c2c0",
+    "activity_type": "tool_use",
+    "timestamp": "2025-10-29T10:15:00.000Z",
+    "metadata": {
+      "tool": "Edit",
+      "file": "app.js"
+    },
+    "created_at": "2025-10-29T15:30:09.321Z"
+  },
+  {
+    "id": "6b32e6cb-c114-4151-b4f2-cb2991143920",
+    "session_id": "a26fddbe-4424-496a-816c-0f4de1456322",
+    "activity_type": "message",
+    "timestamp": "2025-10-29T14:10:00.000Z",
+    "metadata": null,
+    "created_at": "2025-10-29T15:30:09.323Z"
+  },
+  {
+    "id": "44cf5636-5344-49fc-8fb6-23fd4865fee0",
+    "session_id": "46c24ed8-8847-42fc-bd2d-629f30c9ca8d",
+    "activity_type": "tool_use",
+    "timestamp": "2025-10-29T17:37:47.515Z",
+    "metadata": null,
+    "created_at": "2025-10-29T17:37:47.516Z"
+  },
+  {
+    "id": "6795825e-8608-49e4-9cc3-b4ed7399a583",
+    "session_id": "46c24ed8-8847-42fc-bd2d-629f30c9ca8d",
+    "activity_type": "message",
+    "timestamp": "2025-10-29T17:37:47.583Z",
+    "metadata": null,
+    "created_at": "2025-10-29T17:37:47.584Z"
+  },
+  {
+    "id": "55915df7-6ac9-41bd-b7d3-4d3949f00f07",
+    "session_id": "46c24ed8-8847-42fc-bd2d-629f30c9ca8d",
+    "activity_type": "tool_use",
+    "timestamp": "2025-10-29T17:37:47.648Z",
+    "metadata": null,
+    "created_at": "2025-10-29T17:37:47.649Z"
+  }
+]

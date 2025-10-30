@@ -1,47 +1,100 @@
-import fs from 'fs';
+import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { randomUUID } from 'crypto';
+import { existsSync } from 'fs';
+import { platform } from 'os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Data file paths
-const dataDir = join(__dirname, 'data');
-const sessionsFile = join(dataDir, 'sessions.json');
-const activitiesFile = join(dataDir, 'activities.json');
+// SQLite executable path (hardcoded, not dependent on PATH)
+const SQLITE_PATH = platform() === 'win32'
+  ? 'C:\\sqlite\\sqlite3.exe'
+  : process.env.HOME + '/.local/bin/sqlite3';
 
-// Ensure data directory exists
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
-}
+// Database file path
+const DB_PATH = join(__dirname, 'time-tracker.db');
 
-// Initialize data files if they don't exist
-if (!fs.existsSync(sessionsFile)) {
-  fs.writeFileSync(sessionsFile, JSON.stringify([], null, 2));
-}
-if (!fs.existsSync(activitiesFile)) {
-  fs.writeFileSync(activitiesFile, JSON.stringify([], null, 2));
-}
-
-// Helper functions to read/write data
-function readSessions() {
-  const data = fs.readFileSync(sessionsFile, 'utf8');
-  return JSON.parse(data);
+// Helper to execute SQLite commands
+function executeSQLite(sql, returnOutput = false) {
+  try {
+    const result = execSync(`"${SQLITE_PATH}" "${DB_PATH}"`, {
+      input: sql,
+      encoding: 'utf8',
+      stdio: returnOutput ? 'pipe' : ['pipe', 'pipe', 'ignore']
+    });
+    return returnOutput ? result.trim() : null;
+  } catch (error) {
+    throw new Error(`SQLite error: ${error.message}`);
+  }
 }
 
-function writeSessions(sessions) {
-  fs.writeFileSync(sessionsFile, JSON.stringify(sessions, null, 2));
+// Helper to execute SQLite query and get JSON result
+function querySQLite(sql) {
+  try {
+    const input = `.mode json\n${sql}`;
+    const result = execSync(`"${SQLITE_PATH}" "${DB_PATH}"`, {
+      input: input,
+      encoding: 'utf8'
+    });
+    const trimmed = result.trim();
+    return trimmed ? JSON.parse(trimmed) : [];
+  } catch (error) {
+    // If JSON parsing fails or query returns nothing, return empty array
+    return [];
+  }
 }
 
-function readActivities() {
-  const data = fs.readFileSync(activitiesFile, 'utf8');
-  return JSON.parse(data);
+// Initialize database and create tables
+function initializeDatabase() {
+  // Check if SQLite is installed
+  if (!existsSync(SQLITE_PATH)) {
+    throw new Error(`SQLite not found at ${SQLITE_PATH}. Please run the installation script: install-sqlite-windows.bat or install-sqlite-unix.sh`);
+  }
+
+  // Create tables if they don't exist
+  const schema = `
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      project_path TEXT NOT NULL,
+      project_name TEXT,
+      start_time TEXT NOT NULL,
+      end_time TEXT,
+      duration_minutes REAL,
+      message_count INTEGER DEFAULT 0,
+      tool_use_count INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sessions_start_time ON sessions(start_time);
+    CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_path);
+
+    CREATE TABLE IF NOT EXISTS activities (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      activity_type TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      metadata TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (session_id) REFERENCES sessions(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_activities_session ON activities(session_id);
+    CREATE INDEX IF NOT EXISTS idx_activities_timestamp ON activities(timestamp);
+  `;
+
+  // Execute each statement separately
+  const statements = schema.split(';').filter(s => s.trim());
+  for (const stmt of statements) {
+    if (stmt.trim()) {
+      executeSQLite(stmt.trim());
+    }
+  }
 }
 
-function writeActivities(activities) {
-  fs.writeFileSync(activitiesFile, JSON.stringify(activities, null, 2));
-}
+// Initialize on module load
+initializeDatabase();
 
 // Database operations
 
@@ -49,21 +102,8 @@ export function createSession(projectPath, timestamp) {
   const id = randomUUID();
   const projectName = projectPath.split(/[\\/]/).pop() || 'Unknown';
 
-  const session = {
-    id,
-    project_path: projectPath,
-    project_name: projectName,
-    start_time: timestamp,
-    end_time: null,
-    duration_minutes: null,
-    message_count: 0,
-    tool_use_count: 0,
-    created_at: new Date().toISOString()
-  };
-
-  const sessions = readSessions();
-  sessions.push(session);
-  writeSessions(sessions);
+  const sql = `INSERT INTO sessions (id, project_path, project_name, start_time) VALUES ('${id}', '${projectPath.replace(/'/g, "''")}', '${projectName.replace(/'/g, "''")}', '${timestamp}')`;
+  executeSQLite(sql);
 
   return {
     id,
@@ -74,26 +114,22 @@ export function createSession(projectPath, timestamp) {
 }
 
 export function endSession(sessionId, timestamp) {
-  const sessions = readSessions();
-  const sessionIndex = sessions.findIndex(s => s.id === sessionId);
+  // Get session start time
+  const sessions = querySQLite(`SELECT start_time FROM sessions WHERE id = '${sessionId}'`);
 
-  if (sessionIndex === -1) {
+  if (sessions.length === 0) {
     throw new Error(`Session ${sessionId} not found`);
   }
 
-  const session = sessions[sessionIndex];
-
   // Calculate duration in minutes
-  const startTime = new Date(session.start_time);
+  const startTime = new Date(sessions[0].start_time);
   const endTime = new Date(timestamp);
   const durationMs = endTime - startTime;
   const durationMinutes = durationMs / (1000 * 60);
 
   // Update session
-  session.end_time = timestamp;
-  session.duration_minutes = durationMinutes;
-
-  writeSessions(sessions);
+  const sql = `UPDATE sessions SET end_time = '${timestamp}', duration_minutes = ${durationMinutes} WHERE id = '${sessionId}'`;
+  executeSQLite(sql);
 
   return {
     session_id: sessionId,
@@ -104,31 +140,16 @@ export function endSession(sessionId, timestamp) {
 
 export function logActivity(sessionId, activityType, timestamp, metadata = null) {
   const id = randomUUID();
+  const metadataJson = metadata ? JSON.stringify(metadata).replace(/'/g, "''") : null;
 
-  const activity = {
-    id,
-    session_id: sessionId,
-    activity_type: activityType,
-    timestamp,
-    metadata,
-    created_at: new Date().toISOString()
-  };
-
-  const activities = readActivities();
-  activities.push(activity);
-  writeActivities(activities);
+  const sql = `INSERT INTO activities (id, session_id, activity_type, timestamp, metadata) VALUES ('${id}', '${sessionId}', '${activityType}', '${timestamp}', ${metadataJson ? "'" + metadataJson + "'" : 'NULL'})`;
+  executeSQLite(sql);
 
   // Update session counters
-  const sessions = readSessions();
-  const session = sessions.find(s => s.id === sessionId);
-
-  if (session) {
-    if (activityType === 'tool_use') {
-      session.tool_use_count++;
-    } else if (activityType === 'message') {
-      session.message_count++;
-    }
-    writeSessions(sessions);
+  if (activityType === 'tool_use') {
+    executeSQLite(`UPDATE sessions SET tool_use_count = tool_use_count + 1 WHERE id = '${sessionId}'`);
+  } else if (activityType === 'message') {
+    executeSQLite(`UPDATE sessions SET message_count = message_count + 1 WHERE id = '${sessionId}'`);
   }
 
   return {
@@ -142,36 +163,43 @@ export function logActivity(sessionId, activityType, timestamp, metadata = null)
 export function getTimeReport(startDate, endDate = null, projectPath = null) {
   const endDateStr = endDate || new Date().toISOString().split('T')[0];
 
-  const sessions = readSessions();
-  const activities = readActivities();
+  let whereClause = `DATE(start_time) >= DATE('${startDate}') AND DATE(start_time) <= DATE('${endDateStr}')`;
 
-  // Filter sessions by date range and project
-  const filteredSessions = sessions.filter(session => {
-    const sessionDate = session.start_time.split('T')[0];
-    const inDateRange = sessionDate >= startDate && sessionDate <= endDateStr;
-    const matchesProject = !projectPath || session.project_path === projectPath;
-    return inDateRange && matchesProject;
-  });
+  if (projectPath) {
+    whereClause += ` AND project_path = '${projectPath.replace(/'/g, "''")}'`;
+  }
+
+  const sql = `
+    SELECT id, project_path, project_name, start_time, end_time, duration_minutes, message_count, tool_use_count
+    FROM sessions
+    WHERE ${whereClause}
+    ORDER BY start_time DESC
+  `;
+
+  const sessions = querySQLite(sql);
 
   // Calculate totals and apply active time logic
   const MAX_IDLE_MINUTES = 30;
   let totalActiveMinutes = 0;
   const sessionDetails = [];
 
-  for (const session of filteredSessions) {
+  for (const session of sessions) {
     let activeMinutes = 0;
 
     if (session.duration_minutes) {
       // Get activities for this session
-      const sessionActivities = activities
-        .filter(a => a.session_id === session.id)
-        .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      const activities = querySQLite(`
+        SELECT timestamp
+        FROM activities
+        WHERE session_id = '${session.id}'
+        ORDER BY timestamp ASC
+      `);
 
-      if (sessionActivities.length > 1) {
+      if (activities.length > 1) {
         // Calculate active time based on activity gaps
-        for (let i = 1; i < sessionActivities.length; i++) {
-          const prevTime = new Date(sessionActivities[i - 1].timestamp);
-          const currTime = new Date(sessionActivities[i].timestamp);
+        for (let i = 1; i < activities.length; i++) {
+          const prevTime = new Date(activities[i - 1].timestamp);
+          const currTime = new Date(activities[i].timestamp);
           const gapMinutes = (currTime - prevTime) / (1000 * 60);
           activeMinutes += Math.min(gapMinutes, MAX_IDLE_MINUTES);
         }
@@ -214,7 +242,7 @@ export function getTimeReport(startDate, endDate = null, projectPath = null) {
   return {
     total_hours: totalActiveMinutes / 60,
     total_minutes: totalActiveMinutes,
-    total_sessions: filteredSessions.length,
+    total_sessions: sessions.length,
     start_date: startDate,
     end_date: endDateStr,
     daily_breakdown: dailyBreakdown,
@@ -224,32 +252,36 @@ export function getTimeReport(startDate, endDate = null, projectPath = null) {
 }
 
 export function getSessionStats(limit = 10, projectPath = null) {
-  const sessions = readSessions();
+  let whereClause = '1=1';
 
-  // Filter by project if specified
-  let filteredSessions = projectPath
-    ? sessions.filter(s => s.project_path === projectPath)
-    : sessions;
+  if (projectPath) {
+    whereClause = `project_path = '${projectPath.replace(/'/g, "''")}'`;
+  }
 
-  // Sort by start time descending and limit
-  filteredSessions = filteredSessions
-    .sort((a, b) => new Date(b.start_time) - new Date(a.start_time))
-    .slice(0, limit);
+  const sql = `
+    SELECT id, project_path, project_name, start_time, end_time, duration_minutes, message_count, tool_use_count
+    FROM sessions
+    WHERE ${whereClause}
+    ORDER BY start_time DESC
+    LIMIT ${limit}
+  `;
 
-  return filteredSessions;
+  return querySQLite(sql);
 }
 
 export function getCurrentSession(projectPath) {
-  const sessions = readSessions();
+  const sql = `
+    SELECT id, project_path, project_name, start_time
+    FROM sessions
+    WHERE project_path = '${projectPath.replace(/'/g, "''")}' AND end_time IS NULL
+    ORDER BY start_time DESC
+    LIMIT 1
+  `;
 
-  // Find most recent session without end_time for this project
-  const openSessions = sessions
-    .filter(s => s.project_path === projectPath && !s.end_time)
-    .sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
-
-  return openSessions[0] || null;
+  const sessions = querySQLite(sql);
+  return sessions.length > 0 ? sessions[0] : null;
 }
 
 export function closeDatabase() {
-  // No-op for JSON file storage, but kept for API compatibility
+  // No-op for SQLite via command line, but kept for API compatibility
 }

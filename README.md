@@ -9,54 +9,46 @@ An MCP (Model Context Protocol) server for automatically tracking time spent in 
 - **Smart duration calculation**: Caps idle periods to get accurate active time
 - **Project-based tracking**: See time breakdown per project
 - **Flexible reporting**: Generate reports for any date range
-- **100% local**: All data stored in local JSON files, no cloud services
-- **No native dependencies**: Pure JavaScript, works on any platform
-
-## Quick Start
-
-**Choose your setup:**
-
-1. **Hooks Only** (Recommended) - Automatic tracking, CLI reports
-   - See [HOOKS-SETUP.md](./HOOKS-SETUP.md) for step-by-step guide
-   - Simpler setup, works immediately
-
-2. **MCP + Hooks** - Automatic tracking + ask Claude for reports
-   - See [HOOKS-SETUP.md](./HOOKS-SETUP.md) Option 2
-   - More powerful, Claude can query your data directly
+- **SQLite storage**: Fast, reliable database that scales with heavy use
+- **100% local**: All data stored locally, no cloud services
+- **Easy export**: Export to JSON, CSV, or copy database directly
 
 ## Installation
 
-### 1. No Dependencies Required!
+**📖 [Complete Installation Guide →](./INSTALLATION.md)**
 
-The project uses only built-in Node.js modules, so no `npm install` needed.
+### Prerequisites
 
-### 2. Configure Hooks and/or MCP
+ClaudeTimeMCP uses **SQLite** for fast, reliable local storage. Installation is handled by automated scripts.
 
-Add the MCP server to your Claude Code configuration:
+### Quick Install
 
-**Windows**: `%APPDATA%\claude-code\mcp_settings.json`
-**Mac/Linux**: `~/.config/claude-code/mcp_settings.json`
+**Step 1: Install SQLite**
+```bash
+# Windows
+cd C:\Users\eric\ClaudeTimeMCP
+install-sqlite-windows.bat
 
-Create or edit the file with:
-
-```json
-{
-  "mcpServers": {
-    "time-tracker": {
-      "command": "node",
-      "args": [
-        "C:\\Users\\eric\\ClaudeTimeMCP\\index.js"
-      ]
-    }
-  }
-}
+# Mac/Linux
+cd /path/to/ClaudeTimeMCP
+chmod +x install-sqlite-unix.sh
+./install-sqlite-unix.sh
 ```
 
-### 3. Restart Claude Code
+**Step 2: Configure globally (works across ALL projects)**
+```bash
+# Windows
+setup.bat
 
-Exit and restart Claude Code CLI for the MCP server to be loaded.
+# Mac/Linux
+./setup.sh
+```
 
-**Note**: The data directory will be created automatically on first use.
+**Step 3: Reload VS Code or restart terminal**
+
+That's it! Time tracking is now automatic across all your projects.
+
+**📖 See [INSTALLATION.md](./INSTALLATION.md) for detailed step-by-step instructions and troubleshooting.**
 
 ## CLI Tools
 
@@ -153,14 +145,14 @@ Claude will use `get_session_stats` to display recent activity.
 
 ## Automatic Tracking with Hooks
 
-**Hooks are now available!** See [HOOKS-SETUP.md](./HOOKS-SETUP.md) for complete setup instructions.
+**Hooks are configured globally by the setup script!** See [HOOKS-SETUP.md](./HOOKS-SETUP.md) for advanced configuration.
 
 Hooks automatically:
 1. Log session start when Claude Code begins
 2. Log activities as you work
 3. Log session end when you exit
 
-Configure hooks in your project's `.claude/config.json` or globally in Claude Code settings.
+Hooks are configured in `~/.claude/settings.json` and work across all your projects automatically.
 
 ## MCP Tools Reference
 
@@ -232,28 +224,32 @@ Gets the current active session for a project.
 
 ## Data Storage
 
-Data is stored in JSON files in the `data/` directory:
+Data is stored in a SQLite database: `time-tracker.db`
 
-### `sessions.json`
+### `sessions` table
 
-Array of session objects, each containing:
-- `id`: Unique session identifier
-- `project_path`: Full path to project directory
-- `project_name`: Extracted project name
-- `start_time`: ISO timestamp
-- `end_time`: ISO timestamp (null if session still open)
-- `duration_minutes`: Calculated duration
-- `message_count`: Number of messages in session
-- `tool_use_count`: Number of tools used in session
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | TEXT PRIMARY KEY | Unique session identifier |
+| `project_path` | TEXT | Full path to project directory |
+| `project_name` | TEXT | Extracted project name |
+| `start_time` | TEXT | ISO timestamp |
+| `end_time` | TEXT | ISO timestamp (null if session still open) |
+| `duration_minutes` | REAL | Calculated duration |
+| `message_count` | INTEGER | Number of messages in session |
+| `tool_use_count` | INTEGER | Number of tools used in session |
+| `created_at` | TEXT | Record creation timestamp |
 
-### `activities.json`
+### `activities` table
 
-Array of activity objects, each containing:
-- `id`: Unique activity identifier
-- `session_id`: Reference to session
-- `activity_type`: Type of activity
-- `timestamp`: ISO timestamp
-- `metadata`: JSON string with additional data
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | TEXT PRIMARY KEY | Unique activity identifier |
+| `session_id` | TEXT | Reference to session (foreign key) |
+| `activity_type` | TEXT | Type of activity |
+| `timestamp` | TEXT | ISO timestamp |
+| `metadata` | TEXT | JSON string with additional data |
+| `created_at` | TEXT | Record creation timestamp |
 
 ## Active Time Calculation
 
@@ -300,33 +296,47 @@ Get my session stats
 
 ### MCP Server Not Loading
 
-1. Check that `mcp_settings.json` path is correct
+1. Check MCP is registered: `claude mcp list` (should show `time-tracker: ✓ Connected`)
 2. Verify Node.js is installed: `node --version`
-3. Check Claude Code logs for errors
-4. Try running the server manually: `node index.js` (it should wait for input)
+3. If not listed, run setup again: `setup.bat` (Windows) or `./setup.sh` (Unix)
+4. Reload VS Code or restart terminal
+5. Try running the server manually: `node index.js` (it should wait for input)
 
 ### Data Storage Issues
 
-The `data/` directory and JSON files are created automatically on first run.
+The SQLite database `time-tracker.db` is created automatically on first run.
 
 To reset all data:
 ```bash
-rm -rf data
-node test.js  # Will recreate data directory and files
+rm time-tracker.db
+node test.js  # Will recreate database and tables
+```
+
+To inspect the database directly:
+```bash
+C:\sqlite\sqlite3.exe time-tracker.db
+sqlite> .tables
+sqlite> SELECT * FROM sessions LIMIT 10;
 ```
 
 ### Permission Issues
 
-Make sure the ClaudeTimeMCP folder has write permissions for creating the data directory and JSON files.
+Make sure the ClaudeTimeMCP folder has write permissions for creating the SQLite database file.
 
 ## Data Export
 
 To export your time data:
 
-1. The data files are standard JSON, easily readable and parseable
-2. Copy `data/sessions.json` and `data/activities.json` directly
-3. Use the `get_time_report` tool and copy the formatted output
-4. Write custom export scripts using the database.js functions
+1. **SQLite format**: Copy `time-tracker.db` directly (standard SQLite database)
+2. **JSON export**: Use SQLite to export:
+   ```bash
+   C:\sqlite\sqlite3.exe time-tracker.db ".mode json" ".output sessions.json" "SELECT * FROM sessions;"
+   ```
+3. **CSV export**: Use SQLite to export:
+   ```bash
+   C:\sqlite\sqlite3.exe time-tracker.db ".mode csv" ".output sessions.csv" "SELECT * FROM sessions;"
+   ```
+4. **Use MCP/CLI tools**: Get formatted reports via `get_time_report` or `cli.js report`
 
 ## Privacy
 
@@ -339,23 +349,25 @@ To export your time data:
 
 ### ✅ Phase 1: Complete - MCP Server
 - MCP server with query tools
-- JSON-based data storage
+- SQLite database storage
 - Active time calculation
 - Project-based tracking
+- Global configuration (works across all projects)
 
 ### ✅ Phase 2: Complete - Hook Integration
 - Automatic session start/end tracking
 - Automatic activity logging
 - CLI tools for manual control
 - Cross-platform hook scripts
+- Global hooks configuration
 
 ## Future Roadmap
 
 ### Phase 3: Enhanced Reporting
 - Custom slash commands (`/timereport`, `/timelog`)
-- Export to CSV/JSON
 - Weekly/monthly summaries
 - Productivity insights
+- Team time tracking
 
 ### Phase 4: Advanced Features
 - Web dashboard

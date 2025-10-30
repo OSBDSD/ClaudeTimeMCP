@@ -59,35 +59,58 @@ This gives **active working time** instead of **elapsed time**.
 - Short enough to exclude lunch/meetings
 - Can be adjusted in `database.js` (MAX_IDLE_MINUTES constant)
 
-## Data Storage: Why JSON Instead of SQLite?
+## Data Storage: SQLite via Child Process
 
-### Original Plan
-Use `better-sqlite3` for a proper database.
+### Why SQLite?
 
-### The Problem
-Native compilation required on Windows, causing installation failures.
+**Scalability**: Even a single heavy user will accumulate thousands of sessions over time. SQLite handles this efficiently with proper indexing.
 
-### The Solution
-JSON file storage:
-- No dependencies
-- Works everywhere
-- Easy to inspect/export
-- Fast enough for personal use
-- Simple backup (just copy files)
+**No Native Dependencies**: We use SQLite via `child_process` calling the precompiled binary, avoiding the native compilation nightmare of packages like `better-sqlite3`.
+
+**Easy Export**: SQLite can export to JSON, CSV, or any format you need. You get all the benefits of both approaches.
+
+### Implementation Approach
+
+**Precompiled Binary:**
+- Windows: `C:\sqlite\sqlite3.exe`
+- Mac/Linux: `~/.local/bin/sqlite3`
+- Installed via our automated scripts
+
+**Communication:**
+- Use Node's `execSync` with stdin for SQL commands
+- No npm dependencies required
+- Works on all platforms
+
+**SQL Execution:**
+```javascript
+execSync(`"${SQLITE_PATH}" "${DB_PATH}"`, {
+  input: sql,
+  encoding: 'utf8'
+});
+```
 
 ### Trade-offs
+
 **Pros:**
-- Zero setup
-- Cross-platform
-- Human-readable
-- Easy debugging
+- Scales to millions of records
+- Built-in indexing and query optimization
+- ACID transactions
+- Fast complex queries
+- Industry-standard format
 
 **Cons:**
-- Less efficient for large datasets
-- No built-in indexing
-- Manual file locking (not needed for single-user)
+- Requires SQLite binary installation (automated via script)
+- Child process overhead (negligible for local use)
+- Not human-readable without tools (but easy to query)
 
-For tracking personal Claude Code usage, JSON is perfect. For team/enterprise, consider switching to SQLite.
+### When You'd Use Something Else
+
+For a **multi-user web service**, you'd want:
+- PostgreSQL or MySQL for concurrent writes
+- Connection pooling
+- Proper ORM
+
+For **personal time tracking**, SQLite via child_process is perfect.
 
 ## Session Tracking Strategy
 

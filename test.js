@@ -104,10 +104,11 @@ db.endSession(session3.id, new Date().toISOString());
 console.log('');
 
 console.log('All tests completed successfully! ✓');
-console.log('\nData files:');
-console.log('  - data/sessions.json');
-console.log('  - data/activities.json');
-console.log('You can inspect them with any JSON viewer.\n');
+console.log('\nDatabase file: time-tracker.db');
+console.log('You can inspect it with:');
+console.log('  C:\\sqlite\\sqlite3.exe time-tracker.db');
+console.log('  sqlite> .tables');
+console.log('  sqlite> SELECT * FROM sessions;\n');
 
 // Close database
 db.closeDatabase();

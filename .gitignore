@@ -1,5 +1,8 @@
 node_modules/
-data/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
 .current-session-id
 npm-debug.log*
 .DS_Store
