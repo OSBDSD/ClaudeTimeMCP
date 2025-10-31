@@ -449,6 +449,20 @@ export function getActivities(options = {}) {
       Object.assign(processedActivity, flatToolDetail);
     }
 
+    // Exclude large fields by default (unless explicitly requested via fields parameter)
+    // These fields can be massive (entire file contents) and cause MCP token limit issues
+    const largeFieldsToExclude = [
+      'tool_detail.tool_response.originalFile',  // Edit tool - entire original file
+      'tool_detail.tool_response.file.content',  // Read tool - entire file content
+    ];
+
+    // Only exclude if user hasn't specified custom fields
+    if (!fields || fields.length === 0) {
+      for (const fieldToExclude of largeFieldsToExclude) {
+        delete processedActivity[fieldToExclude];
+      }
+    }
+
     // Filter by fields if specified
     let finalActivity = processedActivity;
     if (fields && Array.isArray(fields) && fields.length > 0) {

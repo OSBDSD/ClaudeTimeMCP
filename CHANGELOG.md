@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **MCP token limit errors**: No more "response exceeds maximum allowed tokens (25000)" errors
   - Server proactively limits response size before sending to MCP client
+  - Excludes large fields by default (originalFile, file.content) that contain entire file contents
+  - Large fields can still be explicitly requested via the fields parameter
   - All data remains accessible through continuation-based pagination
 
 ## [0.3.0] - 2025-10-30 (Commit: 8164bc7)
