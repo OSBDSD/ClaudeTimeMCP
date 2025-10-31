@@ -320,10 +320,11 @@ function flattenObject(obj, prefix = '', result = {}) {
   return result;
 }
 
-// Helper to estimate token count (rough: 4 chars = 1 token)
+// Helper to estimate token count (rough: 2.5 chars = 1 token)
+// This accounts for JSON structure overhead (quotes, commas, brackets, field names)
 function estimateTokens(obj) {
   const jsonStr = JSON.stringify(obj);
-  return Math.ceil(jsonStr.length / 4);
+  return Math.ceil(jsonStr.length / 2.5);
 }
 
 export function getActivities(options = {}) {
@@ -400,9 +401,6 @@ export function getActivities(options = {}) {
     estimated_tokens: 0
   };
 
-  let currentTokenCount = 0;
-  const baseMetadataTokens = estimateTokens({ total_returned: 0, has_more: false, continue_after: null, estimated_tokens: 0 });
-
   for (let i = 0; i < activities.length; i++) {
     const activity = activities[i];
 
@@ -475,24 +473,25 @@ export function getActivities(options = {}) {
       finalActivity = filtered;
     }
 
-    // Estimate tokens for this activity
-    const activityTokens = estimateTokens(finalActivity);
+    // Add activity to result
+    result.activities.push(finalActivity);
+    result.total_returned++;
 
-    // Check if adding this activity would exceed token limit
-    if (currentTokenCount + activityTokens + baseMetadataTokens > tokenLimit) {
-      // We've hit the limit - mark that there's more data
+    // Estimate tokens for THE ENTIRE RESPONSE, not individual activities
+    const responseTokens = estimateTokens(result);
+
+    // Check if the TOTAL response would exceed token limit
+    if (responseTokens > tokenLimit) {
+      // We've exceeded the limit - remove the last activity and mark that there's more
+      result.activities.pop();
+      result.total_returned--;
       result.has_more = true;
       result.continue_after = activity.timestamp;
       break;
     }
-
-    // Add activity and update token count
-    result.activities.push(finalActivity);
-    currentTokenCount += activityTokens;
-    result.total_returned++;
   }
 
-  result.estimated_tokens = currentTokenCount + baseMetadataTokens;
+  result.estimated_tokens = estimateTokens(result);
 
   return result;
 }

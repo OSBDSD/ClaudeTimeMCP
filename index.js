@@ -180,7 +180,7 @@ function handleRequest(request) {
             },
             {
               name: 'get_activities',
-              description: 'Get detailed activity logs with timestamps and full context. Use this to answer questions about specific work done, tools used, files edited, bash commands run, time spent on particular tasks, or any query requiring activity-level detail. Returns comprehensive activity data including tool inputs/outputs, file paths, and command details. Automatically limits response to ~20k tokens; use continue_after for pagination.',
+              description: 'Get detailed activity logs with timestamps and full context. Use this to answer questions about specific work done, tools used, files edited, bash commands run, time spent on particular tasks, or any query requiring activity-level detail. Returns comprehensive activity data including tool inputs/outputs, file paths, and command details. IMPORTANT: Results are automatically paginated to prevent token limit errors. The response includes has_more (boolean) and continue_after (timestamp). When has_more is true, you MUST immediately call this tool again with the continue_after value to fetch the next page. Repeat until has_more is false to get all data.',
               inputSchema: {
                 type: 'object',
                 properties: {
