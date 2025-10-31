@@ -8,10 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Token-based pagination**: Server-side token estimation prevents MCP 25k token limit errors
+  - Automatically estimates tokens for each activity (~4 chars = 1 token)
+  - Stops adding activities when approaching 20k token limit (safety margin)
+  - Returns pagination metadata: `total_returned`, `has_more`, `continue_after`, `estimated_tokens`
+- **continue_after parameter**: Continuation-based pagination for get_activities
+  - Pass timestamp from previous response to fetch next page
+  - Natural continuation from where you left off
+- **token_limit parameter**: Optional override for token limit (max 20k)
 
 ### Changed
+- **get_activities response format**: Now returns structured object instead of raw array
+  - `activities`: Array of activity objects
+  - `total_returned`: Count of activities in this response
+  - `has_more`: Boolean indicating if more data is available
+  - `continue_after`: Timestamp to use for next page (null if no more data)
+  - `estimated_tokens`: Approximate token count of response
+- **get_activities tool description**: Updated to mention automatic token limiting and pagination
 
 ### Fixed
+- **MCP token limit errors**: No more "response exceeds maximum allowed tokens (25000)" errors
+  - Server proactively limits response size before sending to MCP client
+  - All data remains accessible through continuation-based pagination
 
 ## [0.3.0] - 2025-10-30 (Commit: 8164bc7)
 
