@@ -180,7 +180,7 @@ function handleRequest(request) {
             },
             {
               name: 'get_activities',
-              description: 'Get detailed activity logs with timestamps and full context. Use this to answer questions about specific work done, tools used, files edited, bash commands run, time spent on particular tasks, or any query requiring activity-level detail. Returns comprehensive activity data including tool inputs/outputs, file paths, and command details.',
+              description: 'Get detailed activity logs with timestamps and full context. Use this to answer questions about specific work done, tools used, files edited, bash commands run, time spent on particular tasks, or any query requiring activity-level detail. Returns comprehensive activity data including tool inputs/outputs, file paths, and command details. Automatically limits response to ~20k tokens; use continue_after for pagination.',
               inputSchema: {
                 type: 'object',
                 properties: {
@@ -207,7 +207,7 @@ function handleRequest(request) {
                   },
                   limit: {
                     type: 'number',
-                    description: 'Maximum number of activities to return (optional, no limit by default)'
+                    description: 'Maximum number of activities to fetch from database (optional). Token limiting may return fewer activities.'
                   },
                   fields: {
                     type: 'array',
@@ -215,6 +215,14 @@ function handleRequest(request) {
                       type: 'string'
                     },
                     description: 'Array of field names to include in output. Use dot notation for nested fields (e.g., ["timestamp", "tool_detail.tool_name", "tool_detail.tool_input.file_path"]). If omitted, returns all flattened fields.'
+                  },
+                  continue_after: {
+                    type: 'string',
+                    description: 'Continuation timestamp from previous response. Use the continue_after value from a previous response to fetch the next page of results.'
+                  },
+                  token_limit: {
+                    type: 'number',
+                    description: 'Maximum tokens to return (default 20000, max 20000 to stay under MCP 25k limit)'
                   }
                 }
               }
@@ -340,7 +348,9 @@ function handleToolCall(id, params) {
           activityType: args.activity_type,
           projectPath: args.project_path,
           limit: args.limit || null,
-          fields: args.fields || null
+          fields: args.fields || null,
+          continueAfter: args.continue_after || null,
+          tokenLimit: args.token_limit && args.token_limit <= 20000 ? args.token_limit : 20000
         });
 
         sendResponse(id, {

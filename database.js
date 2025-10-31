@@ -320,6 +320,12 @@ function flattenObject(obj, prefix = '', result = {}) {
   return result;
 }
 
+// Helper to estimate token count (rough: 4 chars = 1 token)
+function estimateTokens(obj) {
+  const jsonStr = JSON.stringify(obj);
+  return Math.ceil(jsonStr.length / 4);
+}
+
 export function getActivities(options = {}) {
   const {
     startDate = null,
@@ -328,7 +334,9 @@ export function getActivities(options = {}) {
     activityType = null,
     projectPath = null,
     limit = null,
-    fields = null
+    fields = null,
+    continueAfter = null,
+    tokenLimit = 20000  // Default to 20k tokens (safety margin from 25k MCP limit)
   } = options;
 
   let whereClauses = [];
@@ -353,9 +361,15 @@ export function getActivities(options = {}) {
     whereClauses.push(`s.project_path = '${projectPath.replace(/'/g, "''")}'`);
   }
 
+  // Add continuation filter - get activities older than the continuation timestamp
+  if (continueAfter) {
+    whereClauses.push(`a.timestamp < '${continueAfter}'`);
+  }
+
   const whereClause = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : '';
 
-  const limitClause = limit ? `LIMIT ${limit}` : '';
+  // Don't use SQL LIMIT - we'll limit based on token count instead
+  const sqlLimit = limit ? `LIMIT ${limit}` : '';
 
   const sql = `
     SELECT
@@ -372,13 +386,26 @@ export function getActivities(options = {}) {
     JOIN sessions s ON a.session_id = s.id
     ${whereClause}
     ORDER BY a.timestamp DESC
-    ${limitClause}
+    ${sqlLimit}
   `;
 
   const activities = querySQLite(sql);
 
-  // Parse, flatten, and optionally filter activities
-  return activities.map(activity => {
+  // Process activities with token limiting
+  const result = {
+    activities: [],
+    total_returned: 0,
+    has_more: false,
+    continue_after: null,
+    estimated_tokens: 0
+  };
+
+  let currentTokenCount = 0;
+  const baseMetadataTokens = estimateTokens({ total_returned: 0, has_more: false, continue_after: null, estimated_tokens: 0 });
+
+  for (let i = 0; i < activities.length; i++) {
+    const activity = activities[i];
+
     // Parse metadata
     let parsedMetadata = null;
     if (activity.metadata) {
@@ -400,7 +427,7 @@ export function getActivities(options = {}) {
     }
 
     // Start with base activity fields (exclude raw JSON columns)
-    const result = {
+    const processedActivity = {
       id: activity.id,
       session_id: activity.session_id,
       activity_type: activity.activity_type,
@@ -413,28 +440,47 @@ export function getActivities(options = {}) {
     // Flatten metadata fields with prefix
     if (parsedMetadata) {
       const flatMetadata = flattenObject(parsedMetadata, 'metadata');
-      Object.assign(result, flatMetadata);
+      Object.assign(processedActivity, flatMetadata);
     }
 
     // Flatten tool_detail fields with prefix
     if (parsedToolDetail) {
       const flatToolDetail = flattenObject(parsedToolDetail, 'tool_detail');
-      Object.assign(result, flatToolDetail);
+      Object.assign(processedActivity, flatToolDetail);
     }
 
     // Filter by fields if specified
+    let finalActivity = processedActivity;
     if (fields && Array.isArray(fields) && fields.length > 0) {
       const filtered = {};
       for (const field of fields) {
-        if (field in result) {
-          filtered[field] = result[field];
+        if (field in processedActivity) {
+          filtered[field] = processedActivity[field];
         }
       }
-      return filtered;
+      finalActivity = filtered;
     }
 
-    return result;
-  });
+    // Estimate tokens for this activity
+    const activityTokens = estimateTokens(finalActivity);
+
+    // Check if adding this activity would exceed token limit
+    if (currentTokenCount + activityTokens + baseMetadataTokens > tokenLimit) {
+      // We've hit the limit - mark that there's more data
+      result.has_more = true;
+      result.continue_after = activity.timestamp;
+      break;
+    }
+
+    // Add activity and update token count
+    result.activities.push(finalActivity);
+    currentTokenCount += activityTokens;
+    result.total_returned++;
+  }
+
+  result.estimated_tokens = currentTokenCount + baseMetadataTokens;
+
+  return result;
 }
 
 export function closeDatabase() {
