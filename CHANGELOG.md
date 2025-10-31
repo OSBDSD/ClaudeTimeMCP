@@ -7,7 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2025-10-31
+
 ### Added
+- **Assistant response tracking**: New activity type captures Claude's full text responses
+  - `assistant_response` activity type logged via Stop hook
+  - Stores complete response text, character count, and session ID in database
+  - Enables conversation flow analysis and context review
+  - Responses saved to both database AND `data/claude_responses.log` file
+- **Stop hook**: New hook that fires when Claude finishes responding
+  - Parses transcript JSONL to extract last assistant text response
+  - Logs to database with full metadata (response_text, response_length, session_id)
+  - Also appends to timestamped log file for easy reading
+  - Cross-platform support (PowerShell for Windows, bash for Unix)
+- **assistant_response_count**: New column in sessions table
+  - Tracks number of assistant responses per session
+  - Displayed in session stats alongside message_count and tool_use_count
+  - Auto-increments when assistant_response activities are logged
 - **Token-based pagination**: Server-side token estimation prevents MCP 25k token limit errors
   - Automatically estimates tokens for each activity (~4 chars = 1 token)
   - Stops adding activities when approaching 20k token limit (safety margin)
@@ -25,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `continue_after`: Timestamp to use for next page (null if no more data)
   - `estimated_tokens`: Approximate token count of response
 - **get_activities tool description**: Updated to mention automatic token limiting and pagination
+- **CLI session stats**: Now displays assistant response count alongside messages and tool uses
 
 ### Fixed
 - **MCP token limit errors**: No more "response exceeds maximum allowed tokens (25000)" errors
@@ -170,6 +187,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History Summary
 
+- **0.4.0** (2025-10-31): Assistant response tracking with Stop hook and pagination improvements
 - **0.3.0** (2025-10-30): Enhanced tool detail tracking with JSON flattening and field filtering
 - **0.2.1** (2025-10-30): Removed outdated documentation
 - **0.2.0** (2025-10-30): Detailed activity tracking with full metadata capture and error logging

@@ -283,7 +283,7 @@ const commands = {
       console.log(`${index + 1}. ${session.project_name}`);
       console.log(`   Started: ${session.start_time}`);
       console.log(`   Duration: ${duration}`);
-      console.log(`   Messages: ${session.message_count}, Tools: ${session.tool_use_count}`);
+      console.log(`   Messages: ${session.message_count}, Tools: ${session.tool_use_count}, Responses: ${session.assistant_response_count || 0}`);
       console.log('');
     });
   },

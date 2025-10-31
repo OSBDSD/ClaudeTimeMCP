@@ -162,6 +162,25 @@ settings.hooks.PostToolUse = [
   }
 ];
 
+// Stop hook - logs Claude's assistant responses to text file AND database
+// Reads transcript and extracts last text response, writes to both log file and database
+const logFilePath = path.join(PROJECT_DIR, 'data', 'claude_responses.log').replace(/\\/g, '\\\\');
+const cliJsEscaped = CLI_JS.replace(/\\/g, '\\\\');
+const stopCommand = platform() === 'win32'
+  ? `powershell -Command "$stdinData = [Console]::In.ReadToEnd(); $data = $stdinData | ConvertFrom-Json; $sessionId = $data.session_id; $transcriptPath = $data.transcript_path; $timestamp = [DateTime]::UtcNow.ToString('o'); $logFile = '${logFilePath}'; $lastText = ''; if (Test-Path $transcriptPath) { $lines = Get-Content $transcriptPath; for ($i = $lines.Count - 1; $i -ge 0; $i--) { try { $obj = $lines[$i] | ConvertFrom-Json; if ($obj.type -eq 'assistant' -and $obj.message.content) { foreach ($content in $obj.message.content) { if ($content.type -eq 'text') { $lastText = $content.text; break; } } if ($lastText) { break; } } } catch {} } } if ($lastText) { $logDir = Split-Path $logFile; if (!(Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }; $logEntry = \\"[$timestamp] Session: $sessionId\`n$lastText\`n\`n---\`n\`n\\"; Add-Content -Path $logFile -Value $logEntry -Encoding UTF8; $metadata = @{response_text=$lastText; response_length=$lastText.Length; session_id=$sessionId} | ConvertTo-Json -Compress; $metadataEncoded = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($metadata)); & node '${cliJsEscaped}' log-activity assistant_response $timestamp --metadata-base64 $metadataEncoded; }"`
+  : `bash -c 'INPUT=$(cat); SESSION_ID=$(echo "$INPUT" | jq -r ".session_id // \\"unknown\\""); TRANSCRIPT=$(echo "$INPUT" | jq -r ".transcript_path // \\"\\""); TRANSCRIPT="\${TRANSCRIPT/#~/$HOME}"; TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z"); LOG_FILE="${PROJECT_DIR}/data/claude_responses.log"; mkdir -p "$(dirname "$LOG_FILE")"; if [ -f "$TRANSCRIPT" ]; then LAST_TEXT=$(tac "$TRANSCRIPT" | while IFS= read -r line; do if echo "$line" | grep -q "\\"type\\":\\"assistant\\""; then TEXT=$(echo "$line" | jq -r ".message.content[]? | select(.type==\\"text\\") | .text" 2>/dev/null | head -1); if [ -n "$TEXT" ]; then echo "$TEXT"; break; fi; fi; done); if [ -n "$LAST_TEXT" ]; then echo "[$TIMESTAMP] Session: $SESSION_ID" >> "$LOG_FILE"; echo "$LAST_TEXT" >> "$LOG_FILE"; echo "" >> "$LOG_FILE"; echo "---" >> "$LOG_FILE"; echo "" >> "$LOG_FILE"; TEXT_LEN=$(echo -n "$LAST_TEXT" | wc -c); META="{\\"response_text\\":\\"$(echo "$LAST_TEXT" | sed "s/\\"/\\\\\\"/g" | sed "s/\$/\\\\\$/g")\\",\\"response_length\\":$TEXT_LEN,\\"session_id\\":\\"$SESSION_ID\\"}"; META_ENC=$(echo -n "$META" | base64 -w 0 2>/dev/null || echo -n "$META" | base64); node "${CLI_JS}" log-activity assistant_response "$TIMESTAMP" --metadata-base64 "$META_ENC"; fi; fi'`;
+
+settings.hooks.Stop = [
+  {
+    hooks: [
+      {
+        type: 'command',
+        command: stopCommand
+      }
+    ]
+  }
+];
+
 // Write updated settings
 fs.writeFileSync(HOOKS_CONFIG_PATH, JSON.stringify(settings, null, 2), 'utf8');
 console.log('✓ Hooks configured globally');
@@ -174,6 +193,7 @@ console.log('======================\n');
 console.log('What was configured:');
 console.log('  ✅ MCP Server: time-tracker (user scope - works in ALL projects)');
 console.log('  ✅ Hooks: Session tracking (global - works in ALL projects)');
+console.log('  ✅ Response Logging: Claude responses saved to database AND data/claude_responses.log');
 console.log('');
 
 console.log('Verify MCP configuration:');

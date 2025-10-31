@@ -12,6 +12,10 @@
     "tool-use-hook": {
       "command": "~/.claude-time-mcp/hooks/tool-use.sh",
       "description": "Log tool usage activity with full parameters"
+    },
+    "stop-hook": {
+      "command": "~/.claude-time-mcp/hooks/stop.sh",
+      "description": "Log Claude's assistant responses to text file for context"
     }
   }
 }

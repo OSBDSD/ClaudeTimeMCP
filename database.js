@@ -73,6 +73,7 @@ function initializeDatabase() {
       duration_minutes REAL,
       message_count INTEGER DEFAULT 0,
       tool_use_count INTEGER DEFAULT 0,
+      assistant_response_count INTEGER DEFAULT 0,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -105,6 +106,13 @@ function initializeDatabase() {
   // Migration: Add tool_detail column if it doesn't exist (for existing databases)
   try {
     executeSQLite(`ALTER TABLE activities ADD COLUMN tool_detail TEXT;`);
+  } catch (error) {
+    // Column already exists or other error - safe to ignore
+  }
+
+  // Migration: Add assistant_response_count column if it doesn't exist (for existing databases)
+  try {
+    executeSQLite(`ALTER TABLE sessions ADD COLUMN assistant_response_count INTEGER DEFAULT 0;`);
   } catch (error) {
     // Column already exists or other error - safe to ignore
   }
@@ -168,6 +176,8 @@ export function logActivity(sessionId, activityType, timestamp, metadata = null,
     executeSQLite(`UPDATE sessions SET tool_use_count = tool_use_count + 1 WHERE id = '${sessionId}'`);
   } else if (activityType === 'message') {
     executeSQLite(`UPDATE sessions SET message_count = message_count + 1 WHERE id = '${sessionId}'`);
+  } else if (activityType === 'assistant_response') {
+    executeSQLite(`UPDATE sessions SET assistant_response_count = assistant_response_count + 1 WHERE id = '${sessionId}'`);
   }
 
   return {
@@ -188,7 +198,7 @@ export function getTimeReport(startDate, endDate = null, projectPath = null) {
   }
 
   const sql = `
-    SELECT id, project_path, project_name, start_time, end_time, duration_minutes, message_count, tool_use_count
+    SELECT id, project_path, project_name, start_time, end_time, duration_minutes, message_count, tool_use_count, assistant_response_count
     FROM sessions
     WHERE ${whereClause}
     ORDER BY start_time DESC
@@ -277,7 +287,7 @@ export function getSessionStats(limit = 10, projectPath = null) {
   }
 
   const sql = `
-    SELECT id, project_path, project_name, start_time, end_time, duration_minutes, message_count, tool_use_count
+    SELECT id, project_path, project_name, start_time, end_time, duration_minutes, message_count, tool_use_count, assistant_response_count
     FROM sessions
     WHERE ${whereClause}
     ORDER BY start_time DESC

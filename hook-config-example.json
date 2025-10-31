@@ -12,6 +12,10 @@
     "tool-use-hook": {
       "command": "C:\\Users\\eric\\ClaudeTimeMCP\\hooks\\tool-use.bat",
       "description": "Log tool usage activity with full parameters"
+    },
+    "stop-hook": {
+      "command": "C:\\Users\\eric\\ClaudeTimeMCP\\hooks\\stop.bat",
+      "description": "Log Claude's assistant responses to text file for context"
     }
   }
 }
