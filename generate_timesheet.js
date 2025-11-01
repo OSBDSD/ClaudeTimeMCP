@@ -1,19 +1,51 @@
-import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import Database from 'better-sqlite3';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Parse command line arguments
 const args = process.argv.slice(2);
+
+// Check for help flag
+if (args.includes('--help') || args.includes('-h')) {
+  console.log(`
+Usage: node generate_timesheet.js [START_DATE] [END_DATE]
+
+Generate a detailed timesheet report from the Claude Code time tracking database.
+
+Arguments:
+  START_DATE    Optional. Start date in YYYY-MM-DD format (default: today)
+  END_DATE      Optional. End date in YYYY-MM-DD format (default: START_DATE)
+
+Examples:
+  node generate_timesheet.js                    # Report for today
+  node generate_timesheet.js 2025-11-01         # Report for specific date
+  node generate_timesheet.js 2025-11-01 2025-11-30  # Report for date range
+
+NPM Scripts:
+  npm run report                                # Same as: node generate_timesheet.js
+  npm run report 2025-11-01                    # Report for specific date
+  npm run report 2025-11-01 2025-11-30         # Report for date range
+
+Output:
+  - Detailed activity timeline grouped by session
+  - Billable hours calculation (unique hours with activity)
+  - Activity type breakdown (messages, responses, tool uses)
+  - Top tools used
+  - Files modified
+  - Hourly activity distribution
+`);
+  process.exit(0);
+}
+
 let startDate, endDate;
 
 if (args.length === 0) {
-  // Default to yesterday
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  startDate = endDate = yesterday.toISOString().split('T')[0];
+  // Default to today
+  const today = new Date();
+  startDate = endDate = today.toISOString().split('T')[0];
 } else if (args.length === 1) {
   // Single date provided
   startDate = endDate = args[0];
@@ -25,24 +57,78 @@ if (args.length === 0) {
 
 console.log(`\nGenerating timesheet report from ${startDate} to ${endDate}\n`);
 
-// Function to read activities from file
+// Function to read activities from database
 async function getActivities() {
-  const dataDir = path.join(__dirname, 'data');
+  const dbPath = path.join(__dirname, 'time-tracker.db');
+  const db = new Database(dbPath, { readonly: true });
 
-  if (!fs.existsSync(dataDir)) {
-    throw new Error(`Data directory not found: ${dataDir}`);
+  try {
+    console.log(`Reading from database: ${dbPath}\n`);
+
+    const rawActivities = db.prepare(`
+      SELECT
+        a.id,
+        a.session_id,
+        a.timestamp,
+        a.activity_type,
+        a.metadata,
+        a.tool_detail,
+        s.start_time,
+        s.project_name
+      FROM activities a
+      LEFT JOIN sessions s ON a.session_id = s.id
+      WHERE DATE(a.timestamp) BETWEEN DATE(?) AND DATE(?)
+      ORDER BY a.timestamp
+    `).all(startDate, endDate);
+
+    // Parse JSON fields and flatten structure
+    const activities = rawActivities.map(activity => {
+      const parsed = {
+        activity_id: activity.id,
+        session_id: activity.session_id,
+        timestamp: activity.timestamp,
+        activity_type: activity.activity_type,
+        session_start: activity.start_time,
+        project_name: activity.project_name
+      };
+
+      // Parse metadata JSON
+      if (activity.metadata) {
+        try {
+          const metadata = JSON.parse(activity.metadata);
+          parsed['metadata.prompt'] = metadata.prompt;
+          parsed['metadata.response_text'] = metadata.response_text;
+          parsed['metadata.tool'] = metadata.tool;
+          parsed['metadata.description'] = metadata.description;
+        } catch (e) {
+          // Invalid JSON, skip
+        }
+      }
+
+      // Parse tool_detail JSON
+      if (activity.tool_detail) {
+        try {
+          const toolDetail = JSON.parse(activity.tool_detail);
+          parsed['tool_detail.tool_name'] = toolDetail.tool_name;
+          parsed['tool_detail.tool_input'] = toolDetail.tool_input;
+          if (toolDetail.tool_input && toolDetail.tool_input.file_path) {
+            parsed['tool_detail.tool_input.file_path'] = toolDetail.tool_input.file_path;
+          }
+          if (toolDetail.tool_input && toolDetail.tool_input.description) {
+            parsed['metadata.description'] = toolDetail.tool_input.description;
+          }
+        } catch (e) {
+          // Invalid JSON, skip
+        }
+      }
+
+      return parsed;
+    });
+
+    return activities;
+  } finally {
+    db.close();
   }
-
-  const files = fs.readdirSync(dataDir).filter(f => f.startsWith('claude_activities_'));
-
-  if (files.length > 0) {
-    const latestFile = files.sort().reverse()[0];
-    const filePath = path.join(dataDir, latestFile);
-    console.log(`Reading from: ${filePath}\n`);
-    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-  }
-
-  throw new Error('No activities export file found in data directory. Please run the MCP get_activities tool first.');
 }
 
 // Get short description of activity
