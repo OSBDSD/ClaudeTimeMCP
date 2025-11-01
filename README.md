@@ -63,62 +63,18 @@ chmod +x install-sqlite-unix.sh
 
 > **Note:** The old MCP server setup has been archived. If you previously used the MCP server, see [MCP_REMOVAL.md](./MCP_REMOVAL.md) for migration instructions.
 
-## CLI Tools
-
-The CLI provides commands for manual control and reporting:
-
-```bash
-# Start a session
-node cli.js session-start [project-path]
-
-# End current session
-node cli.js session-end
-
-# Log an activity
-node cli.js log-activity [type]
-
-# View current session
-node cli.js current-session
-
-# Generate time report
-node cli.js report <start-date> [end-date] [project-path]
-
-# View recent sessions
-node cli.js stats [limit]
-
-# Show help
-node cli.js help
-```
-
-### Examples
-
-```bash
-# Start tracking
-cd C:\Users\eric\ClaudeTimeMCP
-node cli.js session-start
-
-# Check what's being tracked
-node cli.js current-session
-
-# End when done
-node cli.js session-end
-
-# View your time since October 1st
-node cli.js report 2024-10-01
-
-# See last 10 sessions
-node cli.js stats 10
-```
-
 ## Usage
 
-### Generating Timesheet Reports
+### Generating Timesheet Reports (Primary Tool)
 
 The main reporting tool is `generate_timesheet.js`:
 
 ```bash
-# Report for yesterday (default)
+# Report for today (default)
 npm run report
+
+# Show help with all options
+npm run report -- --help
 
 # Report for specific date
 npm run report 2025-11-01
@@ -134,27 +90,19 @@ This generates a comprehensive timesheet with:
 - Overall statistics and top tools used
 - Hourly breakdown with visual activity indicators
 
-### CLI Commands
+### Quick Database Queries
 
-Use `cli.js` for database queries and manual session control:
+For quick status checks, you can use `cli.js`:
 
 ```bash
-# Generate time report
-node cli.js report 2025-11-01
-
-# View recent sessions
-node cli.js stats 10
-
 # Check current session
 node cli.js current-session
 
-# Manual session control
-node cli.js session-start
-node cli.js session-end
-
-# Get help
-node cli.js help
+# View recent sessions
+node cli.js stats 10
 ```
+
+> **Note:** `cli.js` is primarily used internally by hooks. For comprehensive reporting, use `npm run report` instead.
 
 ## Automatic Tracking with Hooks
 
@@ -238,14 +186,11 @@ echo '{"prompt":"Test message"}' | node scripts/onUserPromptSubmit.js
 node cli.js stats 5
 ```
 
-### Test CLI Tools
+### Test Reporting
 
 ```bash
-# Start a manual session
-node cli.js session-start C:\test\project
-
 # Generate a report
-node cli.js report 2025-11-01
+npm run report 2025-11-01
 
 # View session stats
 node cli.js stats 10
@@ -313,7 +258,7 @@ To export your time data:
    ```bash
    C:\sqlite\sqlite3.exe time-tracker.db ".mode csv" ".output sessions.csv" "SELECT * FROM sessions;"
    ```
-4. **Use MCP/CLI tools**: Get formatted reports via `get_time_report` or `cli.js report`
+4. **Formatted reports**: Generate comprehensive timesheets with `npm run report`
 
 ## Privacy
 
