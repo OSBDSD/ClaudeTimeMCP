@@ -1,69 +1,38 @@
-import { execSync } from 'child_process';
+import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { randomUUID } from 'crypto';
-import { existsSync } from 'fs';
-import { platform } from 'os';
+import { writeFileSync, appendFileSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// SQLite executable path (hardcoded, not dependent on PATH)
-const SQLITE_PATH = platform() === 'win32'
-  ? 'C:\\sqlite\\sqlite3.exe'
-  : process.env.HOME + '/.local/bin/sqlite3';
-
 // Database file path
 const DB_PATH = join(__dirname, 'time-tracker.db');
 
-// Helper to execute SQLite commands
-function executeSQLite(sql, returnOutput = false) {
+// Error log file path
+const ERROR_LOG_PATH = join(__dirname, 'mcp-errors.log');
+
+// Helper to log errors to file
+function logError(message) {
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}] ${message}\n`;
   try {
-    const result = execSync(`"${SQLITE_PATH}" "${DB_PATH}"`, {
-      input: sql,
-      encoding: 'utf8',
-      stdio: returnOutput ? 'pipe' : ['pipe', 'pipe', 'ignore']
-    });
-    return returnOutput ? result.trim() : null;
-  } catch (error) {
-    throw new Error(`SQLite error: ${error.message}`);
+    appendFileSync(ERROR_LOG_PATH, logMessage, 'utf8');
+  } catch (e) {
+    // If we can't write to log file, at least try console
+    console.error('Failed to write to log file:', e);
   }
+  console.error(message);
 }
 
-// Helper to execute SQLite query and get JSON result
-function querySQLite(sql) {
-  try {
-    const input = `.mode json\n${sql}`;
-    const result = execSync(`"${SQLITE_PATH}" "${DB_PATH}"`, {
-      input: input,
-      encoding: 'utf8'
-    });
-    const trimmed = result.trim();
-    return trimmed ? JSON.parse(trimmed) : [];
-  } catch (error) {
-    console.error(`!!! ERROR in querySQLite:`);
-    console.error(`!!! SQL: ${sql}`);
-    console.error(`!!! Error: ${error.message}`);
-    console.error(`!!! Stack: ${error.stack}`);
-    if (error.stderr) {
-      console.error(`!!! SQLite stderr: ${error.stderr}`);
-    }
-    if (error.stdout) {
-      console.error(`!!! SQLite stdout: ${error.stdout}`);
-    }
-    throw error;
-  }
-}
+// Create database connection
+const db = new Database(DB_PATH);
 
 // Initialize database and create tables
 function initializeDatabase() {
-  // Check if SQLite is installed
-  if (!existsSync(SQLITE_PATH)) {
-    throw new Error(`SQLite not found at ${SQLITE_PATH}. Please run the installation script: install-sqlite-windows.bat or install-sqlite-unix.sh`);
-  }
-
   // Create tables if they don't exist
-  const schema = `
+  db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
       project_path TEXT NOT NULL,
@@ -93,26 +62,18 @@ function initializeDatabase() {
 
     CREATE INDEX IF NOT EXISTS idx_activities_session ON activities(session_id);
     CREATE INDEX IF NOT EXISTS idx_activities_timestamp ON activities(timestamp);
-  `;
-
-  // Execute each statement separately
-  const statements = schema.split(';').filter(s => s.trim());
-  for (const stmt of statements) {
-    if (stmt.trim()) {
-      executeSQLite(stmt.trim());
-    }
-  }
+  `);
 
   // Migration: Add tool_detail column if it doesn't exist (for existing databases)
   try {
-    executeSQLite(`ALTER TABLE activities ADD COLUMN tool_detail TEXT;`);
+    db.exec(`ALTER TABLE activities ADD COLUMN tool_detail TEXT;`);
   } catch (error) {
     // Column already exists or other error - safe to ignore
   }
 
   // Migration: Add assistant_response_count column if it doesn't exist (for existing databases)
   try {
-    executeSQLite(`ALTER TABLE sessions ADD COLUMN assistant_response_count INTEGER DEFAULT 0;`);
+    db.exec(`ALTER TABLE sessions ADD COLUMN assistant_response_count INTEGER DEFAULT 0;`);
   } catch (error) {
     // Column already exists or other error - safe to ignore
   }
@@ -127,8 +88,12 @@ export function createSession(projectPath, timestamp) {
   const id = randomUUID();
   const projectName = projectPath.split(/[\\/]/).pop() || 'Unknown';
 
-  const sql = `INSERT INTO sessions (id, project_path, project_name, start_time) VALUES ('${id}', '${projectPath.replace(/'/g, "''")}', '${projectName.replace(/'/g, "''")}', '${timestamp}')`;
-  executeSQLite(sql);
+  const stmt = db.prepare(`
+    INSERT INTO sessions (id, project_path, project_name, start_time)
+    VALUES (?, ?, ?, ?)
+  `);
+
+  stmt.run(id, projectPath, projectName, timestamp);
 
   return {
     id,
@@ -140,21 +105,26 @@ export function createSession(projectPath, timestamp) {
 
 export function endSession(sessionId, timestamp) {
   // Get session start time
-  const sessions = querySQLite(`SELECT start_time FROM sessions WHERE id = '${sessionId}'`);
+  const stmt = db.prepare(`SELECT start_time FROM sessions WHERE id = ?`);
+  const session = stmt.get(sessionId);
 
-  if (sessions.length === 0) {
+  if (!session) {
     throw new Error(`Session ${sessionId} not found`);
   }
 
   // Calculate duration in minutes
-  const startTime = new Date(sessions[0].start_time);
+  const startTime = new Date(session.start_time);
   const endTime = new Date(timestamp);
   const durationMs = endTime - startTime;
   const durationMinutes = durationMs / (1000 * 60);
 
   // Update session
-  const sql = `UPDATE sessions SET end_time = '${timestamp}', duration_minutes = ${durationMinutes} WHERE id = '${sessionId}'`;
-  executeSQLite(sql);
+  const updateStmt = db.prepare(`
+    UPDATE sessions
+    SET end_time = ?, duration_minutes = ?
+    WHERE id = ?
+  `);
+  updateStmt.run(timestamp, durationMinutes, sessionId);
 
   return {
     session_id: sessionId,
@@ -165,19 +135,23 @@ export function endSession(sessionId, timestamp) {
 
 export function logActivity(sessionId, activityType, timestamp, metadata = null, toolDetail = null) {
   const id = randomUUID();
-  const metadataJson = metadata ? JSON.stringify(metadata).replace(/'/g, "''") : null;
-  const toolDetailJson = toolDetail ? JSON.stringify(toolDetail).replace(/'/g, "''") : null;
+  const metadataJson = metadata ? JSON.stringify(metadata) : null;
+  const toolDetailJson = toolDetail ? JSON.stringify(toolDetail) : null;
 
-  const sql = `INSERT INTO activities (id, session_id, activity_type, timestamp, metadata, tool_detail) VALUES ('${id}', '${sessionId}', '${activityType}', '${timestamp}', ${metadataJson ? "'" + metadataJson + "'" : 'NULL'}, ${toolDetailJson ? "'" + toolDetailJson + "'" : 'NULL'})`;
-  executeSQLite(sql);
+  const stmt = db.prepare(`
+    INSERT INTO activities (id, session_id, activity_type, timestamp, metadata, tool_detail)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+
+  stmt.run(id, sessionId, activityType, timestamp, metadataJson, toolDetailJson);
 
   // Update session counters
   if (activityType === 'tool_use') {
-    executeSQLite(`UPDATE sessions SET tool_use_count = tool_use_count + 1 WHERE id = '${sessionId}'`);
+    db.prepare(`UPDATE sessions SET tool_use_count = tool_use_count + 1 WHERE id = ?`).run(sessionId);
   } else if (activityType === 'message') {
-    executeSQLite(`UPDATE sessions SET message_count = message_count + 1 WHERE id = '${sessionId}'`);
+    db.prepare(`UPDATE sessions SET message_count = message_count + 1 WHERE id = ?`).run(sessionId);
   } else if (activityType === 'assistant_response') {
-    executeSQLite(`UPDATE sessions SET assistant_response_count = assistant_response_count + 1 WHERE id = '${sessionId}'`);
+    db.prepare(`UPDATE sessions SET assistant_response_count = assistant_response_count + 1 WHERE id = ?`).run(sessionId);
   }
 
   return {
@@ -191,20 +165,24 @@ export function logActivity(sessionId, activityType, timestamp, metadata = null,
 export function getTimeReport(startDate, endDate = null, projectPath = null) {
   const endDateStr = endDate || new Date().toISOString().split('T')[0];
 
-  let whereClause = `DATE(start_time) >= DATE('${startDate}') AND DATE(start_time) <= DATE('${endDateStr}')`;
-
-  if (projectPath) {
-    whereClause += ` AND project_path = '${projectPath.replace(/'/g, "''")}'`;
-  }
-
-  const sql = `
-    SELECT id, project_path, project_name, start_time, end_time, duration_minutes, message_count, tool_use_count, assistant_response_count
+  let sql = `
+    SELECT id, project_path, project_name, start_time, end_time, duration_minutes,
+           message_count, tool_use_count, assistant_response_count
     FROM sessions
-    WHERE ${whereClause}
-    ORDER BY start_time DESC
+    WHERE DATE(start_time) >= DATE(?) AND DATE(start_time) <= DATE(?)
   `;
 
-  const sessions = querySQLite(sql);
+  const params = [startDate, endDateStr];
+
+  if (projectPath) {
+    sql += ` AND project_path = ?`;
+    params.push(projectPath);
+  }
+
+  sql += ` ORDER BY start_time DESC`;
+
+  const stmt = db.prepare(sql);
+  const sessions = stmt.all(...params);
 
   // Calculate totals and apply active time logic
   const MAX_IDLE_MINUTES = 30;
@@ -216,12 +194,13 @@ export function getTimeReport(startDate, endDate = null, projectPath = null) {
 
     if (session.duration_minutes) {
       // Get activities for this session
-      const activities = querySQLite(`
+      const activitiesStmt = db.prepare(`
         SELECT timestamp
         FROM activities
-        WHERE session_id = '${session.id}'
+        WHERE session_id = ?
         ORDER BY timestamp ASC
       `);
+      const activities = activitiesStmt.all(session.id);
 
       if (activities.length > 1) {
         // Calculate active time based on activity gaps
@@ -280,34 +259,36 @@ export function getTimeReport(startDate, endDate = null, projectPath = null) {
 }
 
 export function getSessionStats(limit = 10, projectPath = null) {
-  let whereClause = '1=1';
-
-  if (projectPath) {
-    whereClause = `project_path = '${projectPath.replace(/'/g, "''")}'`;
-  }
-
-  const sql = `
-    SELECT id, project_path, project_name, start_time, end_time, duration_minutes, message_count, tool_use_count, assistant_response_count
+  let sql = `
+    SELECT id, project_path, project_name, start_time, end_time, duration_minutes,
+           message_count, tool_use_count, assistant_response_count
     FROM sessions
-    WHERE ${whereClause}
-    ORDER BY start_time DESC
-    LIMIT ${limit}
   `;
 
-  return querySQLite(sql);
+  const params = [];
+
+  if (projectPath) {
+    sql += ` WHERE project_path = ?`;
+    params.push(projectPath);
+  }
+
+  sql += ` ORDER BY start_time DESC LIMIT ?`;
+  params.push(limit);
+
+  const stmt = db.prepare(sql);
+  return stmt.all(...params);
 }
 
 export function getCurrentSession(projectPath) {
-  const sql = `
+  const stmt = db.prepare(`
     SELECT id, project_path, project_name, start_time
     FROM sessions
-    WHERE project_path = '${projectPath.replace(/'/g, "''")}' AND end_time IS NULL
+    WHERE project_path = ? AND end_time IS NULL
     ORDER BY start_time DESC
     LIMIT 1
-  `;
+  `);
 
-  const sessions = querySQLite(sql);
-  return sessions.length > 0 ? sessions[0] : null;
+  return stmt.get(projectPath) || null;
 }
 
 // Helper function to flatten nested JSON objects
@@ -330,13 +311,6 @@ function flattenObject(obj, prefix = '', result = {}) {
   return result;
 }
 
-// Helper to estimate token count (rough: 2.5 chars = 1 token)
-// This accounts for JSON structure overhead (quotes, commas, brackets, field names)
-function estimateTokens(obj) {
-  const jsonStr = JSON.stringify(obj);
-  return Math.ceil(jsonStr.length / 2.5);
-}
-
 export function getActivities(options = {}) {
   const {
     startDate = null,
@@ -345,44 +319,10 @@ export function getActivities(options = {}) {
     activityType = null,
     projectPath = null,
     limit = null,
-    fields = null,
-    continueAfter = null,
-    tokenLimit = 20000  // Default to 20k tokens (safety margin from 25k MCP limit)
+    fields = null
   } = options;
 
-  let whereClauses = [];
-
-  if (startDate) {
-    whereClauses.push(`DATE(a.timestamp) >= DATE('${startDate}')`);
-  }
-
-  if (endDate) {
-    whereClauses.push(`DATE(a.timestamp) <= DATE('${endDate}')`);
-  }
-
-  if (sessionId) {
-    whereClauses.push(`a.session_id = '${sessionId}'`);
-  }
-
-  if (activityType) {
-    whereClauses.push(`a.activity_type = '${activityType}'`);
-  }
-
-  if (projectPath) {
-    whereClauses.push(`s.project_path = '${projectPath.replace(/'/g, "''")}'`);
-  }
-
-  // Add continuation filter - get activities older than the continuation timestamp
-  if (continueAfter) {
-    whereClauses.push(`a.timestamp < '${continueAfter}'`);
-  }
-
-  const whereClause = whereClauses.length > 0 ? 'WHERE ' + whereClauses.join(' AND ') : '';
-
-  // Don't use SQL LIMIT - we'll limit based on token count instead
-  const sqlLimit = limit ? `LIMIT ${limit}` : '';
-
-  const sql = `
+  let sql = `
     SELECT
       a.id,
       a.session_id,
@@ -395,117 +335,163 @@ export function getActivities(options = {}) {
       s.start_time as session_start
     FROM activities a
     JOIN sessions s ON a.session_id = s.id
-    ${whereClause}
-    ORDER BY a.timestamp DESC
-    ${sqlLimit}
   `;
 
-  const activities = querySQLite(sql);
+  const whereClauses = [];
+  const params = [];
 
-  // Process activities with token limiting
-  const result = {
-    activities: [],
-    total_returned: 0,
-    has_more: false,
-    continue_after: null,
-    estimated_tokens: 0
-  };
-
-  for (let i = 0; i < activities.length; i++) {
-    const activity = activities[i];
-
-    // Parse metadata
-    let parsedMetadata = null;
-    if (activity.metadata) {
-      try {
-        parsedMetadata = JSON.parse(activity.metadata);
-      } catch (e) {
-        parsedMetadata = { raw: activity.metadata };
-      }
-    }
-
-    // Parse tool_detail
-    let parsedToolDetail = null;
-    if (activity.tool_detail) {
-      try {
-        parsedToolDetail = JSON.parse(activity.tool_detail);
-      } catch (e) {
-        parsedToolDetail = { raw: activity.tool_detail };
-      }
-    }
-
-    // Start with base activity fields (exclude raw JSON columns)
-    const processedActivity = {
-      id: activity.id,
-      session_id: activity.session_id,
-      activity_type: activity.activity_type,
-      timestamp: activity.timestamp,
-      project_path: activity.project_path,
-      project_name: activity.project_name,
-      session_start: activity.session_start
-    };
-
-    // Flatten metadata fields with prefix
-    if (parsedMetadata) {
-      const flatMetadata = flattenObject(parsedMetadata, 'metadata');
-      Object.assign(processedActivity, flatMetadata);
-    }
-
-    // Flatten tool_detail fields with prefix
-    if (parsedToolDetail) {
-      const flatToolDetail = flattenObject(parsedToolDetail, 'tool_detail');
-      Object.assign(processedActivity, flatToolDetail);
-    }
-
-    // Exclude large fields by default (unless explicitly requested via fields parameter)
-    // These fields can be massive (entire file contents) and cause MCP token limit issues
-    const largeFieldsToExclude = [
-      'tool_detail.tool_response.originalFile',  // Edit tool - entire original file
-      'tool_detail.tool_response.file.content',  // Read tool - entire file content
-    ];
-
-    // Only exclude if user hasn't specified custom fields
-    if (!fields || fields.length === 0) {
-      for (const fieldToExclude of largeFieldsToExclude) {
-        delete processedActivity[fieldToExclude];
-      }
-    }
-
-    // Filter by fields if specified
-    let finalActivity = processedActivity;
-    if (fields && Array.isArray(fields) && fields.length > 0) {
-      const filtered = {};
-      for (const field of fields) {
-        if (field in processedActivity) {
-          filtered[field] = processedActivity[field];
-        }
-      }
-      finalActivity = filtered;
-    }
-
-    // Add activity to result
-    result.activities.push(finalActivity);
-    result.total_returned++;
-
-    // Estimate tokens for THE ENTIRE RESPONSE, not individual activities
-    const responseTokens = estimateTokens(result);
-
-    // Check if the TOTAL response would exceed token limit
-    if (responseTokens > tokenLimit) {
-      // We've exceeded the limit - remove the last activity and mark that there's more
-      result.activities.pop();
-      result.total_returned--;
-      result.has_more = true;
-      result.continue_after = activity.timestamp;
-      break;
-    }
+  if (startDate) {
+    whereClauses.push(`DATE(a.timestamp) >= DATE(?)`);
+    params.push(startDate);
   }
 
-  result.estimated_tokens = estimateTokens(result);
+  if (endDate) {
+    whereClauses.push(`DATE(a.timestamp) <= DATE(?)`);
+    params.push(endDate);
+  }
 
-  return result;
+  if (sessionId) {
+    whereClauses.push(`a.session_id = ?`);
+    params.push(sessionId);
+  }
+
+  if (activityType) {
+    whereClauses.push(`a.activity_type = ?`);
+    params.push(activityType);
+  }
+
+  if (projectPath) {
+    whereClauses.push(`s.project_path = ?`);
+    params.push(projectPath);
+  }
+
+  if (whereClauses.length > 0) {
+    sql += ` WHERE ` + whereClauses.join(' AND ');
+  }
+
+  sql += ` ORDER BY a.timestamp DESC`;
+
+  if (limit) {
+    sql += ` LIMIT ?`;
+    params.push(limit);
+  }
+
+  try {
+    const stmt = db.prepare(sql);
+    const activities = stmt.all(...params);
+
+    // Process all activities
+    const processedActivities = activities.map(activity => {
+
+      // Parse metadata
+      let parsedMetadata = null;
+      if (activity.metadata) {
+        try {
+          parsedMetadata = JSON.parse(activity.metadata);
+        } catch (e) {
+          parsedMetadata = { raw: activity.metadata };
+        }
+      }
+
+      // Parse tool_detail
+      let parsedToolDetail = null;
+      if (activity.tool_detail) {
+        try {
+          parsedToolDetail = JSON.parse(activity.tool_detail);
+        } catch (e) {
+          parsedToolDetail = { raw: activity.tool_detail };
+        }
+      }
+
+      // Start with base activity fields (exclude raw JSON columns)
+      const processedActivity = {
+        id: activity.id,
+        session_id: activity.session_id,
+        activity_type: activity.activity_type,
+        timestamp: activity.timestamp,
+        project_path: activity.project_path,
+        project_name: activity.project_name,
+        session_start: activity.session_start
+      };
+
+      // Flatten metadata fields with prefix
+      if (parsedMetadata) {
+        const flatMetadata = flattenObject(parsedMetadata, 'metadata');
+        Object.assign(processedActivity, flatMetadata);
+      }
+
+      // Flatten tool_detail fields with prefix
+      if (parsedToolDetail) {
+        const flatToolDetail = flattenObject(parsedToolDetail, 'tool_detail');
+        Object.assign(processedActivity, flatToolDetail);
+      }
+
+      // Exclude large fields by default (unless explicitly requested via fields parameter)
+      // These fields can be massive (entire file contents) and cause MCP token limit issues
+      const largeFieldsToExclude = [
+        'tool_detail.tool_response.originalFile',  // Edit tool - entire original file
+        'tool_detail.tool_response.file.content',  // Read tool - entire file content
+      ];
+
+      // Only exclude if user hasn't specified custom fields
+      if (!fields || fields.length === 0) {
+        for (const fieldToExclude of largeFieldsToExclude) {
+          delete processedActivity[fieldToExclude];
+        }
+      }
+
+      // Filter by fields if specified
+      let finalActivity = processedActivity;
+      if (fields && Array.isArray(fields) && fields.length > 0) {
+        const filtered = {};
+        for (const field of fields) {
+          if (field in processedActivity) {
+            filtered[field] = processedActivity[field];
+          }
+        }
+        finalActivity = filtered;
+      }
+
+      return finalActivity;
+    });
+
+    // Write to data directory
+    const dataDir = join(__dirname, 'data');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `claude_activities_${timestamp}.json`;
+    const filePath = join(dataDir, filename);
+
+    try {
+      writeFileSync(filePath, JSON.stringify(processedActivities, null, 2), 'utf8');
+    } catch (error) {
+      logError(`!!! ERROR writing activities to file:`);
+      logError(`!!! File path: ${filePath}`);
+      logError(`!!! Error: ${error.message}`);
+      logError(`!!! Stack: ${error.stack}`);
+      throw error;
+    }
+
+    return {
+      file_path: filePath,
+      total_activities: processedActivities.length,
+      query: {
+        start_date: startDate,
+        end_date: endDate,
+        session_id: sessionId,
+        activity_type: activityType,
+        project_path: projectPath
+      }
+    };
+  } catch (error) {
+    logError(`!!! ERROR in getActivities:`);
+    logError(`!!! SQL: ${sql}`);
+    logError(`!!! Params: ${JSON.stringify(params)}`);
+    logError(`!!! Error: ${error.message}`);
+    logError(`!!! Stack: ${error.stack}`);
+    throw error;
+  }
 }
 
 export function closeDatabase() {
-  // No-op for SQLite via command line, but kept for API compatibility
+  db.close();
 }

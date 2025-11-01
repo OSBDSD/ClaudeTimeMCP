@@ -1,11 +1,137 @@
 # Changelog
 
-All notable changes to ClaudeTimeMCP will be documented in this file.
+All notable changes to ClaudeTime (formerly ClaudeTimeMCP) will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [2.0.0] - 2025-11-01
+
+### Changed
+- **Project renamed from ClaudeTimeMCP to ClaudeTime**
+  - Focus shifted from MCP server to direct script-based reporting
+  - Package name updated to `claude-time-tracker`
+  - Main entry point now `cli.js` instead of `index.js`
+
+### Removed
+- **MCP server archived**: Moved all MCP-specific files to `_archive_mcp/` directory
+  - `index.js` - MCP server implementation
+  - `test.js` - MCP tests
+  - `setup.js/bat/sh` - MCP setup scripts
+  - `INSTALLATION.md` - MCP installation guide
+  - `hook-config-*.json` - MCP configuration examples
+  - `install-sqlite-*.sh/.bat` - SQLite installation scripts
+
+### Why MCP Was Removed
+
+The MCP (Model Context Protocol) layer proved to have critical limitations that made it impractical for time tracking and reporting:
+
+1. **Read Tool Limitations**: Claude Code's Read tool has a hard 256KB limit, but activity exports grow to ~500KB after just a few days of use
+   - Cannot read the exported activity JSON files that the MCP itself generates
+   - 5,000+ lines of activity data exceed tool capacity
+   - Even with field filtering, exports quickly become too large
+
+2. **No Practical Advantage**: The MCP tools provide no benefit over direct SQLite access
+   - Direct queries via `better-sqlite3` have zero limitations
+   - Script-based reporting (Node.js) can handle arbitrarily large datasets
+   - MCP adds complexity and artificial walls without delivering value
+
+3. **Export Paradox**: The `get_activities` tool exports data to files that Claude Code cannot read
+   - Tool creates JSON exports to work around token limits
+   - But those exports exceed Read tool capacity
+   - User forced to use external scripts anyway, defeating MCP purpose
+
+4. **Hooks Provide Data Collection**: All valuable functionality comes from hooks, not MCP
+   - Session tracking: Provided by startup/shutdown hooks
+   - Activity logging: Provided by tool-use and message hooks
+   - MCP was just an unnecessary abstraction layer
+
+### What Still Works (Better Than Before)
+
+All core functionality remains intact and more powerful without MCP constraints:
+
+- **Hooks**: Continue to automatically collect all session and activity data
+- **SQLite Database**: Full access with no size limits
+- **Scripts**:
+  - `generate_timesheet.js` - Comprehensive timesheet reports
+  - `cli.js` - Database CLI for queries and reports
+  - Direct SQLite access for custom queries
+- **No Limitations**: Can process thousands of activities without artificial caps
+
+### Migration
+
+Users should:
+1. Remove `claude-time-mcp` from Claude Code MCP config manually (see `MCP_REMOVAL.md`)
+2. Continue using hooks (no changes needed)
+3. Use `npm run report` or `node cli.js` for reporting instead of MCP tools
+
+## [0.6.0] - 2025-11-01
+
+### Changed
+- **Migrated to better-sqlite3**: Replaced execSync + sqlite3.exe CLI with native better-sqlite3 library
+  - Eliminates ENOBUFS errors caused by buffer overflow on large result sets
+  - Much faster - no process spawning overhead
+  - No buffer limits - can handle arbitrarily large datasets
+  - Parameterized queries prevent SQL injection vulnerabilities
+  - Direct SQLite library access instead of shelling out to CLI
+
+## [0.5.0] - 2025-11-01
+
+### Added
+- **Billable hours timesheet report**: New `generate_timesheet.js` script for professional time tracking
+  - Calculates billable hours: any activity during an hour = 1 billable hour
+  - Line-by-line detailed activity log with timestamps
+  - Session summaries with file modifications and tool usage
+  - Hourly breakdown showing activities per hour
+  - Supports single date or date range: `node generate_timesheet.js 2025-10-31` or `node generate_timesheet.js 2025-10-30 2025-10-31`
+  - npm script: `npm run report`
+- **Unified hook logging**: All hooks now log to single `data/hooks.log` file
+  - New `hookLogger.js` utility module for consistent logging across all hooks
+  - Info, debug, and error levels with timestamps
+  - Full error details including stack traces
+  - Makes debugging hook failures much easier
+- **Node.js hook scripts**: Replaced PowerShell one-liners with clean, readable Node.js scripts
+  - `scripts/onSessionStart.js` - Logs session starts
+  - `scripts/onSessionEnd.js` - Logs session ends
+  - `scripts/onUserPromptSubmit.js` - Logs user messages
+  - `scripts/onPostToolUse.js` - Logs tool usage (was causing errors with large outputs)
+  - `scripts/onStop.js` - Logs Claude responses
+  - Cross-platform compatible (Windows/Linux)
+  - Human-readable code instead of PowerShell spaghetti
+  - Easy to test manually by piping JSON to stdin
+  - Proper error handling with try/catch blocks
+- **Hook configuration examples**: New `hook-config-node.json` and `hook-config-node-unix.json`
+  - Clean hook configurations using Node.js scripts instead of inline PowerShell
+  - Ready to copy to `~/.claude/settings.json`
+
+### Changed
+- **Activities export location**: Moved from system temp directory to project data directory
+  - Old: `C:\Users\<user>\AppData\Local\Temp\claude_activities_*.json` (hard to find)
+  - New: `C:\Users\<user>\ClaudeTimeMCP\data\claude_activities_*.json` (organized)
+  - `generate_timesheet.js` updated to read from new location
+  - No more hunting through Windows temp folders
+- **All hook scripts refactored**: Migrated from inline PowerShell/bash to external Node.js files
+  - Easier to debug with console logging
+  - Better error messages and stack traces
+  - Can be tested independently without triggering hooks
+  - Unified logging across all hooks
+
+### Fixed
+- **Hook execution errors**: Node.js scripts provide better error reporting than PowerShell one-liners
+  - Exit codes properly captured and logged
+  - Spawn errors caught and logged to unified log file
+  - Large tool outputs (like report generation) no longer cause silent failures
+
+## [Unreleased - Earlier]
+
+### Fixed
+- **Removed restrictive activity_type enums**: MCP tool schemas for `log_activity` and `get_activities` no longer enforce enum restrictions on activity_type parameter
+  - Previously had `enum: ['tool_use', 'message', 'error', 'other']` which was documentation-only but could cause confusion
+  - Database and code support any activity_type string (including `assistant_response` added in 0.4.0)
+  - Enum restrictions were unnecessary protocol overhead that didn't match actual implementation
+  - This fix ensures all activity types can be logged and queried without artificial restrictions
 
 ## [0.4.0] - 2025-10-31
 

@@ -2,6 +2,25 @@
 
 import * as readline from 'readline';
 import * as db from './database.js';
+import { appendFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const ERROR_LOG_PATH = join(__dirname, 'mcp-errors.log');
+
+// Helper to log errors to file
+function logError(message) {
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}] ${message}\n`;
+  try {
+    appendFileSync(ERROR_LOG_PATH, logMessage, 'utf8');
+  } catch (e) {
+    console.error('Failed to write to log file:', e);
+  }
+  console.error(message);
+}
 
 // MCP Server for Claude Time Tracking
 // Implements JSON-RPC 2.0 over stdio
@@ -110,8 +129,7 @@ function handleRequest(request) {
                   },
                   activity_type: {
                     type: 'string',
-                    description: 'Type of activity (tool_use, message, etc.)',
-                    enum: ['tool_use', 'message', 'error', 'other']
+                    description: 'Type of activity (tool_use, message, assistant_response, error, other)'
                   },
                   timestamp: {
                     type: 'string',
@@ -180,7 +198,7 @@ function handleRequest(request) {
             },
             {
               name: 'get_activities',
-              description: 'Get detailed activity logs with timestamps and full context. Use this to answer questions about specific work done, tools used, files edited, bash commands run, time spent on particular tasks, or any query requiring activity-level detail. Returns comprehensive activity data including tool inputs/outputs, file paths, and command details. IMPORTANT: Results are automatically paginated to prevent token limit errors. The response includes has_more (boolean) and continue_after (timestamp). When has_more is true, you MUST immediately call this tool again with the continue_after value to fetch the next page. Repeat until has_more is false to get all data. TIME ESTIMATES: When calculating work hours, apply a 30-minute idle timeout cap between activities - gaps longer than 30 minutes should be capped at 30 minutes to avoid counting extended breaks as active work time.',
+              description: 'Get detailed activity logs with timestamps and full context. Use this to answer questions about specific work done, tools used, files edited, bash commands run, time spent on particular tasks, or any query requiring activity-level detail. Returns a file path to a JSON file containing comprehensive activity data including tool inputs/outputs, file paths, and command details. IMPORTANT: After calling this tool, you MUST use the Read tool to read the file at the returned file_path to access the activity data. TIME ESTIMATES: When calculating work hours, apply a 30-minute idle timeout cap between activities - gaps longer than 30 minutes should be capped at 30 minutes to avoid counting extended breaks as active work time.',
               inputSchema: {
                 type: 'object',
                 properties: {
@@ -198,8 +216,7 @@ function handleRequest(request) {
                   },
                   activity_type: {
                     type: 'string',
-                    description: 'Filter by activity type (tool_use, message, error, other), optional',
-                    enum: ['tool_use', 'message', 'error', 'other']
+                    description: 'Filter by activity type (tool_use, message, assistant_response, error, other), optional'
                   },
                   project_path: {
                     type: 'string',
@@ -207,7 +224,7 @@ function handleRequest(request) {
                   },
                   limit: {
                     type: 'number',
-                    description: 'Maximum number of activities to fetch from database (optional). Token limiting may return fewer activities.'
+                    description: 'Maximum number of activities to return (optional, no limit by default)'
                   },
                   fields: {
                     type: 'array',
@@ -215,14 +232,6 @@ function handleRequest(request) {
                       type: 'string'
                     },
                     description: 'Array of field names to include in output. Use dot notation for nested fields (e.g., ["timestamp", "tool_detail.tool_name", "tool_detail.tool_input.file_path"]). If omitted, returns all flattened fields.'
-                  },
-                  continue_after: {
-                    type: 'string',
-                    description: 'Continuation timestamp from previous response. Use the continue_after value from a previous response to fetch the next page of results.'
-                  },
-                  token_limit: {
-                    type: 'number',
-                    description: 'Maximum tokens to return (default 20000, max 20000 to stay under MCP 25k limit)'
                   }
                 }
               }
@@ -239,10 +248,10 @@ function handleRequest(request) {
         sendError(id, -32601, `Method not found: ${method}`);
     }
   } catch (error) {
-    console.error(`!!! ERROR in handleRequest:`);
-    console.error(`!!! Method: ${method}`);
-    console.error(`!!! Error: ${error.message}`);
-    console.error(`!!! Stack: ${error.stack}`);
+    logError(`!!! ERROR in handleRequest:`);
+    logError(`!!! Method: ${method}`);
+    logError(`!!! Error: ${error.message}`);
+    logError(`!!! Stack: ${error.stack}`);
     sendError(id, -32603, 'Internal error', error.message);
   }
 }
@@ -348,9 +357,7 @@ function handleToolCall(id, params) {
           activityType: args.activity_type,
           projectPath: args.project_path,
           limit: args.limit || null,
-          fields: args.fields || null,
-          continueAfter: args.continue_after || null,
-          tokenLimit: args.token_limit && args.token_limit <= 20000 ? args.token_limit : 20000
+          fields: args.fields || null
         });
 
         sendResponse(id, {
@@ -367,11 +374,11 @@ function handleToolCall(id, params) {
         sendError(id, -32601, `Tool not found: ${name}`);
     }
   } catch (error) {
-    console.error(`!!! ERROR in handleToolCall:`);
-    console.error(`!!! Tool name: ${name}`);
-    console.error(`!!! Arguments: ${JSON.stringify(args)}`);
-    console.error(`!!! Error: ${error.message}`);
-    console.error(`!!! Stack: ${error.stack}`);
+    logError(`!!! ERROR in handleToolCall:`);
+    logError(`!!! Tool name: ${name}`);
+    logError(`!!! Arguments: ${JSON.stringify(args)}`);
+    logError(`!!! Error: ${error.message}`);
+    logError(`!!! Stack: ${error.stack}`);
     sendError(id, -32603, 'Tool execution error', error.message);
   }
 }
@@ -413,10 +420,10 @@ rl.on('line', (line) => {
     const request = JSON.parse(line);
     handleRequest(request);
   } catch (error) {
-    console.error(`!!! ERROR parsing JSON-RPC request:`);
-    console.error(`!!! Line: ${line}`);
-    console.error(`!!! Error: ${error.message}`);
-    console.error(`!!! Stack: ${error.stack}`);
+    logError(`!!! ERROR parsing JSON-RPC request:`);
+    logError(`!!! Line: ${line}`);
+    logError(`!!! Error: ${error.message}`);
+    logError(`!!! Stack: ${error.stack}`);
     sendError(null, -32700, 'Parse error', error.message);
   }
 });

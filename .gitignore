@@ -6,3 +6,5 @@ node_modules/
 .current-session-id
 npm-debug.log*
 .DS_Store
+data/
+mcp-errors.log

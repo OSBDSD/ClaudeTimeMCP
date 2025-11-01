@@ -1,0 +1,58 @@
+{
+  "env": {
+    "MAX_MCP_OUTPUT_TOKENS": "50000"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"C:\\Users\\eric\\ClaudeTimeMCP\\scripts\\onSessionStart.js\""
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"C:\\Users\\eric\\ClaudeTimeMCP\\scripts\\onSessionEnd.js\""
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"C:\\Users\\eric\\ClaudeTimeMCP\\scripts\\onUserPromptSubmit.js\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"C:\\Users\\eric\\ClaudeTimeMCP\\scripts\\onPostToolUse.js\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"C:\\Users\\eric\\ClaudeTimeMCP\\scripts\\onStop.js\""
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,54 +1,67 @@
-# Claude Time MCP
+# ClaudeTime
 
-An MCP (Model Context Protocol) server for automatically tracking time spent in Claude Code CLI sessions.
+**Formerly ClaudeTimeMCP** - Automatic time tracking for Claude Code CLI sessions using hooks and direct SQLite reporting.
+
+> **⚠️ Important Change (v2.0.0):** This project has been renamed from **ClaudeTimeMCP** to **ClaudeTime** and the MCP server has been removed. The MCP layer proved impractical due to Read tool limitations (256KB) that cannot handle activity exports after just a few days of use (~500KB, 5,000+ lines). All functionality now uses direct SQLite scripts with zero limitations. See [CHANGELOG.md](./CHANGELOG.md#200---2025-11-01) for details.
 
 ## Features
 
-- **Automatic time tracking**: Log session start/end automatically
-- **Activity monitoring**: Track tool usage and messages
+- **Automatic time tracking**: Hooks log session start/end automatically
+- **Activity monitoring**: Track tool usage, messages, and responses
 - **Smart duration calculation**: Caps idle periods to get accurate active time
 - **Project-based tracking**: See time breakdown per project
-- **Flexible reporting**: Generate reports for any date range
-- **SQLite storage**: Fast, reliable database that scales with heavy use
+- **Flexible reporting**: Generate detailed timesheets for any date range
+- **SQLite storage**: Fast, reliable database with no size limits
+- **Direct script access**: No MCP constraints, handle thousands of activities
 - **100% local**: All data stored locally, no cloud services
-- **Easy export**: Export to JSON, CSV, or copy database directly
+- **Easy export**: Export to JSON, CSV, or query database directly
 
 ## Installation
 
-**📖 [Complete Installation Guide →](./INSTALLATION.md)**
-
 ### Prerequisites
 
-ClaudeTimeMCP uses **SQLite** for fast, reliable local storage. Installation is handled by automated scripts.
+- **Node.js** (v14 or higher)
+- **npm** (comes with Node.js)
 
 ### Quick Install
 
-**Step 1: Install SQLite**
+**Step 1: Clone and install dependencies**
+```bash
+cd C:\Users\eric\ClaudeTimeMCP
+npm install
+```
+
+**Step 2: Run automated hooks setup (REQUIRED)**
+```bash
+node setup-hooks.js
+```
+
+**This step is required!** The script modifies your Claude Code configuration files to enable automatic tracking.
+
+What it does:
+- Verifies all hook scripts are present in `scripts/` directory
+- Modifies `~/.claude/settings.json` to add hook configurations
+- Modifies `~/AppData/Roaming/claude-code/config.json` (if exists)
+- Creates backups of existing config files before modifying
+- Configures all 5 hooks (SessionStart, SessionEnd, UserPromptSubmit, PostToolUse, Stop)
+
+Without running this script, time tracking will not work.
+
+**Step 3: Restart Claude Code**
+
+That's it! Hooks will now automatically track all sessions across all projects.
+
+**Optional: Install SQLite CLI tools for database inspection**
 ```bash
 # Windows
-cd C:\Users\eric\ClaudeTimeMCP
 install-sqlite-windows.bat
 
 # Mac/Linux
-cd /path/to/ClaudeTimeMCP
 chmod +x install-sqlite-unix.sh
 ./install-sqlite-unix.sh
 ```
 
-**Step 2: Configure globally (works across ALL projects)**
-```bash
-# Windows
-setup.bat
-
-# Mac/Linux
-./setup.sh
-```
-
-**Step 3: Reload VS Code or restart terminal**
-
-That's it! Time tracking is now automatic across all your projects.
-
-**📖 See [INSTALLATION.md](./INSTALLATION.md) for detailed step-by-step instructions and troubleshooting.**
+> **Note:** The old MCP server setup has been archived. If you previously used the MCP server, see [MCP_REMOVAL.md](./MCP_REMOVAL.md) for migration instructions.
 
 ## CLI Tools
 
@@ -97,130 +110,77 @@ node cli.js report 2024-10-01
 node cli.js stats 10
 ```
 
-## MCP Usage
+## Usage
 
-### Checking if MCP is Connected
+### Generating Timesheet Reports
 
-In Claude Code, you can ask:
+The main reporting tool is `generate_timesheet.js`:
 
-```
-Can you list your available MCP tools?
-```
+```bash
+# Report for yesterday (default)
+npm run report
 
-You should see tools like `log_session_start`, `get_time_report`, etc.
+# Report for specific date
+npm run report 2025-11-01
 
-### Manual Time Logging
-
-You can manually log sessions (useful for testing):
-
-```
-Please use the log_session_start tool with:
-- project_path: C:\Users\eric\shopifytealium
-- timestamp: 2025-10-29T10:00:00Z
+# Report for date range
+npm run report 2025-10-01 2025-11-07
 ```
 
-### Getting Time Reports
+This generates a comprehensive timesheet with:
+- Line-by-line activity log per session
+- Billable hours calculation (unique hours with activity)
+- Session summaries with file edits and tool usage
+- Overall statistics and top tools used
+- Hourly breakdown with visual activity indicators
 
-Ask Claude to generate a time report:
+### CLI Commands
 
+Use `cli.js` for database queries and manual session control:
+
+```bash
+# Generate time report
+node cli.js report 2025-11-01
+
+# View recent sessions
+node cli.js stats 10
+
+# Check current session
+node cli.js current-session
+
+# Manual session control
+node cli.js session-start
+node cli.js session-end
+
+# Get help
+node cli.js help
 ```
-Show me my time report since October 1st, 2024
-```
-
-Or:
-
-```
-How much time have I spent on this project this week?
-```
-
-Claude will use the `get_time_report` tool to fetch and display your data.
-
-### View Recent Sessions
-
-```
-Show me my last 10 Claude Code sessions
-```
-
-Claude will use `get_session_stats` to display recent activity.
 
 ## Automatic Tracking with Hooks
 
-**Hooks are configured globally by the setup script!** See [INSTALLATION.md](./INSTALLATION.md) Appendix for details on how hooks work.
+Hooks are configured in your Claude Code settings and automatically log all session activity to SQLite.
 
-Hooks automatically:
-1. Log session start when Claude Code begins
-2. Log user messages and tool usage as you work
-3. Log session end when you exit
+**What Hooks Track:**
+1. **Session Start** - When Claude Code launches (logs project path, timestamp)
+2. **User Messages** - Every prompt you send (logs message content)
+3. **Tool Usage** - Every tool Claude uses (logs tool name, inputs, outputs)
+4. **Assistant Responses** - Claude's text responses (logs response content)
+5. **Session End** - When Claude Code exits (calculates duration)
 
-Hooks are configured in `~/.claude/settings.json` and work across all your projects automatically.
+**Hook Configuration:**
+- Hooks are defined in `hooks/` directory as Node.js scripts
+- Configured in Claude Code settings: `claude_desktop_config.json`
+- Work across all your projects automatically
+- Write directly to SQLite database (`time-tracker.db`)
 
-## MCP Tools Reference
+**Hook Scripts:**
+- `scripts/onSessionStart.js` - Logs session starts
+- `scripts/onSessionEnd.js` - Logs session ends
+- `scripts/onUserPromptSubmit.js` - Logs your messages
+- `scripts/onPostToolUse.js` - Logs tool usage
+- `scripts/onStop.js` - Logs Claude's responses
 
-### `log_session_start`
-
-Logs when a Claude Code session begins.
-
-**Parameters:**
-- `project_path` (string): Working directory path
-- `timestamp` (string): ISO timestamp
-
-**Returns:** Session object with ID
-
-### `log_session_end`
-
-Logs when a session ends and calculates duration.
-
-**Parameters:**
-- `session_id` (string): Session ID from start
-- `timestamp` (string): ISO timestamp
-
-**Returns:** Session summary with duration
-
-### `log_activity`
-
-Logs activity during a session.
-
-**Parameters:**
-- `session_id` (string): Session ID
-- `activity_type` (string): Type (tool_use, message, error, other)
-- `timestamp` (string): ISO timestamp
-- `metadata` (object, optional): Additional data
-
-**Returns:** Activity ID
-
-### `get_time_report`
-
-Generates a time report for a date range.
-
-**Parameters:**
-- `start_date` (string): Start date (YYYY-MM-DD)
-- `end_date` (string, optional): End date, defaults to today
-- `project_path` (string, optional): Filter by project
-
-**Returns:** Formatted report with:
-- Total active hours
-- Sessions count
-- Daily breakdown
-- Project breakdown
-
-### `get_session_stats`
-
-Gets recent session statistics.
-
-**Parameters:**
-- `limit` (number, optional): Number of sessions (default 10)
-- `project_path` (string, optional): Filter by project
-
-**Returns:** Array of recent sessions with details
-
-### `get_current_session`
-
-Gets the current active session for a project.
-
-**Parameters:**
-- `project_path` (string): Project path to check
-
-**Returns:** Current session object or null
+All hooks write to a unified log file (`data/hooks.log`) for debugging.
 
 ## Data Storage
 
@@ -263,44 +223,59 @@ This is the same logic used in the `analyze_claude_time.js` script.
 
 ## Testing
 
-### Manual Test
+### Test Hook Scripts
 
-You can test the MCP server manually:
+You can test individual hook scripts by piping JSON data to them:
 
 ```bash
-cd C:\Users\eric\ClaudeTimeMCP
-node test.js
+# Test session start hook
+echo '{"project_path":"C:\\test","timestamp":"2025-11-01T12:00:00Z"}' | node scripts/onSessionStart.js
+
+# Test user message hook
+echo '{"prompt":"Test message"}' | node scripts/onUserPromptSubmit.js
+
+# Check the database
+node cli.js stats 5
 ```
 
-This will:
-1. Start a test session
-2. Log some activities
-3. End the session
-4. Generate a report
+### Test CLI Tools
 
-### Integration Test
+```bash
+# Start a manual session
+node cli.js session-start C:\test\project
 
-Start Claude Code and ask:
+# Generate a report
+node cli.js report 2025-11-01
 
+# View session stats
+node cli.js stats 10
 ```
-Use the log_session_start tool to test the time tracker
-```
 
-Then check if it works by asking:
+### Verify Hooks Are Working
 
-```
-Get my session stats
-```
+After configuring hooks in Claude Code:
+
+1. Start Claude Code in any project
+2. Send a message to Claude
+3. Check the database:
+   ```bash
+   node cli.js current-session
+   node cli.js stats 1
+   ```
+4. Verify session and activities are logged
 
 ## Troubleshooting
 
-### MCP Server Not Loading
+### Hooks Not Logging
 
-1. Check MCP is registered: `claude mcp list` (should show `time-tracker: ✓ Connected`)
-2. Verify Node.js is installed: `node --version`
-3. If not listed, run setup again: `setup.bat` (Windows) or `./setup.sh` (Unix)
-4. Reload VS Code or restart terminal
-5. Try running the server manually: `node index.js` (it should wait for input)
+1. Verify hooks are configured in Claude Code settings (`claude_desktop_config.json`)
+2. Check `data/hooks.log` for error messages
+3. Verify Node.js is installed: `node --version`
+4. Test hook scripts manually:
+   ```bash
+   echo '{"project_path":"C:\\test"}' | node scripts/onSessionStart.js
+   ```
+5. Restart Claude Code after configuration changes
 
 ### Data Storage Issues
 
@@ -309,19 +284,21 @@ The SQLite database `time-tracker.db` is created automatically on first run.
 To reset all data:
 ```bash
 rm time-tracker.db
-node test.js  # Will recreate database and tables
+node cli.js session-start  # Will recreate database and tables
 ```
 
 To inspect the database directly:
 ```bash
+# Windows (if SQLite CLI installed)
 C:\sqlite\sqlite3.exe time-tracker.db
-sqlite> .tables
-sqlite> SELECT * FROM sessions LIMIT 10;
+
+# Or use a GUI like DB Browser for SQLite
+# https://sqlitebrowser.org/
 ```
 
 ### Permission Issues
 
-Make sure the ClaudeTimeMCP folder has write permissions for creating the SQLite database file.
+Make sure the ClaudeTime folder has write permissions for creating the SQLite database file.
 
 ## Data Export
 
@@ -347,33 +324,32 @@ To export your time data:
 
 ## Current Status
 
-### ✅ Phase 1: Complete - MCP Server
-- MCP server with query tools
-- SQLite database storage
-- Active time calculation
-- Project-based tracking
-- Global configuration (works across all projects)
+### ✅ Complete - Core Functionality
+- ✅ Hook-based automatic tracking (session, messages, tools, responses)
+- ✅ SQLite database storage with no size limits
+- ✅ Comprehensive timesheet reporting (`generate_timesheet.js`)
+- ✅ CLI tools for queries and manual control
+- ✅ Active time calculation (30-minute idle cap)
+- ✅ Project-based tracking
+- ✅ Cross-platform support (Windows, macOS, Linux)
 
-### ✅ Phase 2: Complete - Hook Integration
-- Automatic session start/end tracking
-- Automatic activity logging
-- CLI tools for manual control
-- Cross-platform hook scripts
-- Global hooks configuration
+### ⚠️ Removed - MCP Server
+- ❌ MCP server archived (Read tool 256KB limit made it impractical)
+- ✅ All functionality replaced with superior script-based approach
 
 ## Future Roadmap
 
 ### Phase 3: Enhanced Reporting
-- Custom slash commands (`/timereport`, `/timelog`)
-- Weekly/monthly summaries
-- Productivity insights
-- Team time tracking
+- Weekly/monthly summary reports
+- Visual productivity charts (hours per day, tool usage trends)
+- Cost tracking per project (billable rates)
+- Export to external formats (Excel, PDF timesheets)
 
 ### Phase 4: Advanced Features
-- Web dashboard
-- Integration with external time tracking services (Toggl, Harvest, etc.)
-- Cost tracking per project
-- Team collaboration features
+- Web dashboard for visual analytics
+- Integration with external time tracking services (Toggl, Harvest, Clockify)
+- Team time tracking (multi-user support)
+- Automated invoicing based on tracked hours
 
 ## License
 

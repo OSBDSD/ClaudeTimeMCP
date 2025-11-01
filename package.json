@@ -1,20 +1,21 @@
 {
-  "name": "claude-time-mcp",
-  "version": "1.0.0",
-  "description": "MCP server for tracking Claude Code CLI session time",
+  "name": "claude-time-tracker",
+  "version": "2.0.0",
+  "description": "Hook-based time tracking for Claude Code CLI sessions with SQLite reporting",
   "type": "module",
-  "main": "index.js",
+  "main": "cli.js",
   "scripts": {
-    "start": "node index.js",
-    "test": "node test.js"
+    "report": "node generate_timesheet.js",
+    "cli": "node cli.js"
   },
   "keywords": [
     "claude",
-    "mcp",
-    "time-tracking"
+    "time-tracking",
+    "hooks"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "better-sqlite3": "9.6.0"
   }
 }
